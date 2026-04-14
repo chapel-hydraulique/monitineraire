@@ -1882,6 +1882,16 @@ function loadingHTML() {
 // ════════════════════════════════════════════════════════════════
 //  INIT
 // ════════════════════════════════════════════════════════════════
-updateTopDate();
-initImperatifs();
-updatePomoDisplay
+document.addEventListener("DOMContentLoaded", function() {
+  updateTopDate();
+  initImperatifs();
+  updatePomoDisplay();
+
+  const uriEl = document.getElementById("redirect-uri-display");
+  if (uriEl) uriEl.textContent = window.location.origin + window.location.pathname;
+
+  initMSAL();
+});
+</script>
+</body>
+</html>
