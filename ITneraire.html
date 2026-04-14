@@ -743,6 +743,17 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
 
+  /* ── PLACEHOLDERS LISIBLES ── */
+  ::placeholder { color: #6b7494 !important; opacity: 1 !important; }
+  ::-webkit-input-placeholder { color: #6b7494 !important; }
+  ::-moz-placeholder { color: #6b7494 !important; opacity: 1 !important; }
+  input::placeholder, textarea::placeholder { color: #6b7494 !important; }
+  .crapaud-input::placeholder { color: #7a82a0 !important; }
+  .imperatif-input::placeholder { color: #7a82a0 !important; }
+  #twomn-task::placeholder { color: #7a82a0 !important; }
+  .modal-input::placeholder { color: #7a82a0 !important; }
+  #setup-client-id::placeholder { color: #7a82a0 !important; font-family: var(--font-mono); }
+
   /* ── RESPONSIVE ── */
   @media (max-width: 1200px) {
     #main-app.active {
