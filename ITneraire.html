@@ -1695,7 +1695,7 @@ async function loadFlaggedEmails() {
 
   try {
     const data = await graphGet(
-      `/me/messages?$filter=flag/flagStatus eq 'flagged'&$select=subject,from,receivedDateTime,flag&$orderby=receivedDateTime desc&$top=10`
+      `/me/mailFolders/inbox/messages?$filter=flag/flagStatus eq 'flagged'&$select=subject,from,receivedDateTime,flag&$top=10`
     );
 
     if (!data.value?.length) {
