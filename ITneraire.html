@@ -1694,17 +1694,20 @@ async function loadFlaggedEmails() {
   el.innerHTML = loadingHTML();
 
   try {
+    // Filtre côté client car $filter sur flag/flagStatus nécessite un header spécial
     const data = await graphGet(
-      `/me/mailFolders/inbox/messages?$filter=flag/flagStatus eq 'flagged'&$select=subject,from,receivedDateTime,flag&$top=10`
+      `/me/mailFolders/inbox/messages?$select=subject,from,receivedDateTime,flag&$top=50`
     );
 
-    if (!data.value?.length) {
+    const flagged = (data.value || []).filter(m => m.flag?.flagStatus === 'flagged');
+
+    if (!flagged.length) {
       el.innerHTML = `<div class="empty-state">🎉 Aucun email flaggé !</div>`;
       return;
     }
 
     el.innerHTML = `<div class="email-list">` +
-      data.value.map(m => {
+      flagged.slice(0, 10).map(m => {
         const from = m.from?.emailAddress?.name || m.from?.emailAddress?.address || "?";
         const date = new Date(m.receivedDateTime).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit"});
         const subject = m.subject || "(Sans objet)";
