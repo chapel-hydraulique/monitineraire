@@ -1107,7 +1107,7 @@ function clearClientId() { localStorage.removeItem("mit_azure_client_id"); }
 
 function buildMsalConfig(clientId) {
   return {
-    auth: { clientId, authority: "https://login.microsoftonline.com/common", redirectUri: REDIRECT_URI },
+    auth: { clientId, authority: "https://login.microsoftonline.com/chapel-hydraulique.com", redirectUri: REDIRECT_URI },
     cache: { cacheLocation: "sessionStorage" }
   };
 }
