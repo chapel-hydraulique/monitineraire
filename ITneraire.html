@@ -1,0 +1,1887 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MonITinéraire — Eric Baiamonte</title>
+
+<!-- MSAL for Microsoft Auth -->
+<script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0d0f14;
+    --surface: #161920;
+    --surface2: #1e2230;
+    --surface3: #252a3a;
+    --border: #2d334a;
+    --accent: #4f8ef7;
+    --accent2: #7c5cf7;
+    --success: #34c97e;
+    --warn: #f7a94f;
+    --danger: #f75f5f;
+    --text: #e8ecf5;
+    --text2: #8a91a8;
+    --text3: #555e7a;
+    --font-head: 'Syne', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+    --font-body: 'DM Sans', sans-serif;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    --shadow-lg: 0 8px 40px rgba(0,0,0,0.6);
+
+    /* Eisenhower quadrant colors */
+    --q1: #f75f5f22;
+    --q1b: #f75f5f;
+    --q2: #4f8ef722;
+    --q2b: #4f8ef7;
+    --q3: #f7a94f22;
+    --q3b: #f7a94f;
+    --q4: #3d445822;
+    --q4b: #555e7a;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── BACKGROUND MESH ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 80% 10%, #4f8ef710 0%, transparent 60%),
+      radial-gradient(ellipse 40% 40% at 10% 80%, #7c5cf708 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── LAYOUT ── */
+  .app-shell {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-rows: 56px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    background: #0d0f14cc;
+    backdrop-filter: blur(12px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .topbar-logo {
+    font-family: var(--font-head);
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .topbar-logo span { color: var(--text2); -webkit-text-fill-color: var(--text3); }
+
+  .topbar-sep { flex: 1; }
+
+  .topbar-date {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text3);
+    letter-spacing: 0.5px;
+  }
+
+  .topbar-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .topbar-user:hover { background: var(--surface3); color: var(--text); }
+  .topbar-user .avatar {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; color: #fff;
+  }
+
+  .sync-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text3);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: var(--font-body);
+  }
+  .sync-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .sync-btn.syncing svg { animation: spin 1s linear infinite; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── AUTH SCREEN ── */
+  #auth-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 56px);
+    gap: 24px;
+    padding: 40px;
+  }
+
+  .auth-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 48px;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .auth-card h2 {
+    font-family: var(--font-head);
+    font-size: 28px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .auth-card p { color: var(--text2); font-size: 14px; line-height: 1.6; margin-bottom: 32px; }
+
+  .ms-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%;
+    padding: 14px 24px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 20px #4f8ef740;
+  }
+  .ms-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 28px #4f8ef760; }
+
+  /* ── MAIN GRID ── */
+  #main-app {
+    display: none;
+    padding: 20px 24px;
+    gap: 16px;
+    max-width: 1600px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  #main-app.active {
+    display: grid;
+    grid-template-columns: 320px 1fr 280px;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "pomodoro  trois-a   agenda"
+      "pomodoro  eisenhower agenda"
+      "emails    eisenhower todo-panel";
+  }
+
+  /* ── CARD BASE ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--surface3); }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-family: var(--font-head);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text3);
+  }
+
+  .card-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-family: var(--font-mono);
+    font-weight: 500;
+  }
+
+  /* ── POMODORO ── */
+  .pomodoro-wrap { grid-area: pomodoro; display: flex; flex-direction: column; gap: 0; }
+
+  .pomodoro-card {
+    grid-area: pomodoro;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 20px;
+  }
+
+  .pomo-title {
+    font-family: var(--font-head);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 20px;
+    align-self: flex-start;
+  }
+
+  .pomo-ring-wrap {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    margin-bottom: 16px;
+  }
+
+  .pomo-ring-svg { width: 180px; height: 180px; transform: rotate(-90deg); }
+
+  .pomo-ring-bg {
+    fill: none;
+    stroke: var(--surface3);
+    stroke-width: 6;
+  }
+
+  .pomo-ring-progress {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-dasharray: 502;
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 1s linear, stroke 0.4s;
+  }
+
+  .pomo-ring-progress.break { stroke: var(--success); }
+
+  .pomo-time-display {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  .pomo-time {
+    font-family: var(--font-mono);
+    font-size: 42px;
+    font-weight: 500;
+    letter-spacing: -2px;
+    line-height: 1;
+  }
+
+  .pomo-label {
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-family: var(--font-mono);
+  }
+
+  .pomo-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .pomo-btn {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    transition: all 0.2s;
+  }
+
+  .pomo-btn.primary {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 4px 16px #4f8ef750;
+  }
+  .pomo-btn.primary:hover { transform: scale(1.08); }
+
+  .pomo-btn.secondary {
+    background: var(--surface3);
+    color: var(--text2);
+  }
+  .pomo-btn.secondary:hover { background: var(--surface3); color: var(--text); }
+
+  .pomo-sessions {
+    display: flex; gap: 6px; margin-bottom: 16px;
+  }
+
+  .pomo-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--surface3);
+    transition: background 0.3s;
+  }
+  .pomo-dot.done { background: var(--accent); }
+
+  .pomo-task-section {
+    width: 100%;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+
+  .pomo-task-label {
+    font-size: 11px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: var(--font-mono);
+    margin-bottom: 8px;
+  }
+
+  .pomo-task-display {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--text2);
+    min-height: 40px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .pomo-task-display:hover { border-color: var(--accent); color: var(--text); }
+  .pomo-task-display.has-task { color: var(--text); }
+
+  /* ── 3A DU JOUR ── */
+  .trois-a-card { grid-area: trois-a; }
+
+  .crapaud-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .crapaud-row:hover { border-color: var(--warn); }
+  .crapaud-row.done { opacity: 0.5; }
+  .crapaud-row.done .crapaud-text { text-decoration: line-through; color: var(--text3); }
+  .crapaud-emoji { font-size: 20px; }
+  .crapaud-text { flex: 1; font-size: 13px; }
+  .crapaud-input {
+    background: none; border: none; outline: none;
+    color: var(--text); font-family: var(--font-body); font-size: 13px;
+    width: 100%;
+  }
+
+  .imperatif-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .imperatif-item {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface2);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .imperatif-item:hover { border-color: var(--accent); border-style: solid; }
+  .imperatif-item.filled { border-style: solid; border-color: var(--border); }
+  .imperatif-item.done { opacity: 0.4; }
+
+  .imperatif-num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 500;
+    min-width: 18px;
+  }
+
+  .imperatif-input {
+    flex: 1;
+    background: none; border: none; outline: none;
+    color: var(--text); font-family: var(--font-body); font-size: 13px;
+  }
+  .imperatif-input::placeholder { color: var(--text3); }
+
+  .imperatif-check {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .imperatif-check:hover { border-color: var(--success); }
+  .imperatif-item.done .imperatif-check { background: var(--success); border-color: var(--success); }
+
+  /* ── EISENHOWER ── */
+  .eisenhower-card { grid-area: eisenhower; }
+
+  .eisenhower-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 10px;
+    height: calc(100% - 48px);
+    min-height: 320px;
+  }
+
+  .eisen-quadrant {
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    border: 1px solid transparent;
+    display: flex; flex-direction: column; gap: 6px;
+    transition: all 0.2s;
+    min-height: 140px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .eisen-quadrant::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0.06;
+    background: var(--qbg);
+    pointer-events: none;
+  }
+
+  .q1 { background: var(--q1); border-color: #f75f5f30; --qbg: #f75f5f; }
+  .q2 { background: var(--q2); border-color: #4f8ef730; --qbg: #4f8ef7; }
+  .q3 { background: var(--q3); border-color: #f7a94f30; --qbg: #f7a94f; }
+  .q4 { background: var(--q4); border-color: #55557a30; --qbg: #555e7a; }
+
+  .eisen-quadrant.drag-over { transform: scale(1.01); box-shadow: 0 0 0 2px var(--accent); }
+
+  .eisen-q-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .eisen-q-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-family: var(--font-mono);
+  }
+
+  .q1 .eisen-q-title { color: var(--q1b); }
+  .q2 .eisen-q-title { color: var(--q2b); }
+  .q3 .eisen-q-title { color: var(--q3b); }
+  .q4 .eisen-q-title { color: var(--q4b); }
+
+  .eisen-q-sub {
+    font-size: 10px;
+    color: var(--text3);
+    font-family: var(--font-mono);
+  }
+
+  .eisen-task-list { display: flex; flex-direction: column; gap: 4px; flex: 1; overflow-y: auto; }
+
+  .eisen-task {
+    display: flex; align-items: center; gap: 6px;
+    background: #ffffff08;
+    border: 1px solid #ffffff10;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    cursor: grab;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .eisen-task:hover { background: #ffffff12; }
+  .eisen-task.dragging { opacity: 0.4; }
+  .eisen-task-text { flex: 1; }
+  .eisen-task-del {
+    font-size: 14px; color: var(--text3); cursor: pointer; line-height: 1;
+    padding: 0 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .eisen-task:hover .eisen-task-del { opacity: 1; }
+
+  .eisen-add-btn {
+    font-size: 11px;
+    color: var(--text3);
+    cursor: pointer;
+    padding: 3px 0;
+    display: flex; align-items: center; gap: 4px;
+    transition: color 0.2s;
+    background: none; border: none;
+    font-family: var(--font-body);
+  }
+  .eisen-add-btn:hover { color: var(--text2); }
+
+  /* ── AGENDA ── */
+  .agenda-card { grid-area: agenda; }
+
+  .agenda-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .agenda-item {
+    display: flex; gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--accent);
+    transition: all 0.2s;
+  }
+  .agenda-item:hover { background: var(--surface3); }
+  .agenda-item.past { opacity: 0.4; border-left-color: var(--text3); }
+  .agenda-item.now { border-left-color: var(--success); background: #34c97e10; }
+
+  .agenda-time {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    min-width: 40px;
+    padding-top: 1px;
+  }
+  .agenda-item.now .agenda-time { color: var(--success); }
+
+  .agenda-content { flex: 1; min-width: 0; }
+  .agenda-subject { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agenda-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  .empty-state {
+    text-align: center;
+    padding: 24px;
+    color: var(--text3);
+    font-size: 13px;
+  }
+
+  /* ── EMAILS ── */
+  .emails-card { grid-area: emails; }
+
+  .email-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .email-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .email-item:hover { border-color: var(--accent); background: var(--surface3); }
+
+  .email-flag { font-size: 14px; flex-shrink: 0; padding-top: 1px; }
+
+  .email-body { flex: 1; min-width: 0; }
+  .email-from { font-size: 11px; color: var(--text3); margin-bottom: 2px; }
+  .email-subject { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .email-date { font-size: 10px; color: var(--text3); font-family: var(--font-mono); }
+
+  .add-to-eisen-btn {
+    font-size: 18px; cursor: pointer; opacity: 0;
+    transition: opacity 0.2s;
+    background: none; border: none; color: var(--accent);
+    padding: 0;
+  }
+  .email-item:hover .add-to-eisen-btn { opacity: 1; }
+
+  /* ── TODO PANEL ── */
+  .todo-card { grid-area: todo-panel; }
+
+  .todo-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .todo-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    cursor: grab;
+    transition: all 0.2s;
+    font-size: 13px;
+    user-select: none;
+  }
+  .todo-item:hover { border-color: var(--accent2); background: var(--surface3); }
+  .todo-item.dragging { opacity: 0.3; }
+  .todo-item .drag-handle { color: var(--text3); font-size: 14px; flex-shrink: 0; }
+  .todo-item-text { flex: 1; }
+  .todo-item-pomo {
+    font-size: 12px; cursor: pointer; opacity: 0;
+    transition: opacity 0.2s;
+    background: none; border: none; color: var(--warn);
+  }
+  .todo-item:hover .todo-item-pomo { opacity: 1; }
+
+  /* ── LOADING ── */
+  .loading-row {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text3); font-size: 13px; padding: 12px 0;
+  }
+  .loading-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); animation: pulse 1.2s ease-in-out infinite;
+  }
+  .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes pulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: #0008;
+    display: none; align-items: center; justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.active { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    width: 380px;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .modal h3 { font-family: var(--font-head); font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+
+  .modal-input {
+    width: 100%; padding: 10px 14px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text);
+    font-family: var(--font-body); font-size: 14px;
+    outline: none; margin-bottom: 16px;
+    transition: border-color 0.2s;
+  }
+  .modal-input:focus { border-color: var(--accent); }
+
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  .btn { padding: 9px 18px; border-radius: 8px; font-family: var(--font-body); font-size: 13px; cursor: pointer; border: none; transition: all 0.2s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #6aa0f9; }
+  .btn-ghost { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--surface3); }
+
+  /* ── CONFIG SECTION ── */
+  .config-note {
+    background: #4f8ef710;
+    border: 1px solid #4f8ef730;
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+
+  /* ── NOTIFICATION ── */
+  #notif {
+    position: fixed; top: 70px; right: 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px;
+    box-shadow: var(--shadow);
+    z-index: 9999;
+    transform: translateX(120%);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    max-width: 280px;
+  }
+  #notif.show { transform: translateX(0); }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1200px) {
+    #main-app.active {
+      grid-template-columns: 280px 1fr;
+      grid-template-rows: auto auto auto auto;
+      grid-template-areas:
+        "pomodoro trois-a"
+        "pomodoro eisenhower"
+        "emails eisenhower"
+        "agenda todo-panel";
+    }
+  }
+
+  @media (max-width: 768px) {
+    #main-app.active {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "trois-a"
+        "pomodoro"
+        "eisenhower"
+        "agenda"
+        "emails"
+        "todo-panel";
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ══ TOPBAR ══ -->
+  <header class="topbar">
+    <div class="topbar-logo">MonIT<span>inéraire</span></div>
+    <button class="sync-btn" id="sync-btn" onclick="syncAll()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+        <path d="M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+        <path d="M8 16H3v5"/>
+      </svg>
+      Synchroniser
+    </button>
+    <div class="topbar-sep"></div>
+    <div class="topbar-date" id="top-date"></div>
+    <div class="topbar-user" id="user-info" style="display:none" title="Cliquer pour se déconnecter" onclick="resetConfig()">
+      <div class="avatar" id="user-avatar">EB</div>
+      <span id="user-name">Eric Baiamonte</span>
+      <span style="font-size:10px; color:var(--text3); margin-left:4px;">⏏</span>
+    </div>
+  </header>
+
+  <!-- ══ AUTH SCREEN ══ -->
+  <div id="auth-screen">
+    <div class="auth-card">
+      <div style="font-size:48px; margin-bottom:16px">⚡</div>
+      <h2>MonITinéraire</h2>
+      <p>Ton espace de productivité connecté à Microsoft 365 — Pomodoro, Eisenhower, 3A du jour, To Do, Outlook et Agenda.</p>
+
+      <!-- ÉTAPE 1 : Setup Client ID (affiché uniquement au 1er lancement) -->
+      <div id="setup-step" style="display:none;">
+        <div class="config-note" style="text-align:left;">
+          <strong>🔧 Premier lancement — Configuration Azure AD</strong><br><br>
+          Tu n'as besoin de faire ça <em>qu'une seule fois</em>.<br><br>
+          <strong>1.</strong> Va sur <a href="https://portal.azure.com" target="_blank" style="color:var(--accent)">portal.azure.com</a><br>
+          <strong>2.</strong> Azure AD → Inscriptions d'applications → Nouvelle inscription<br>
+          <strong>3.</strong> Nom : <code>MonITinéraire</code><br>
+          <strong>4.</strong> URI de redirection : <code style="word-break:break-all; font-size:11px;" id="redirect-uri-display"></code><br>
+          <strong>5.</strong> Copie l'<strong>Application (client) ID</strong> et colle-le ici :<br>
+        </div>
+        <input id="setup-client-id" class="modal-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          style="margin-top:12px; font-family:var(--font-mono); font-size:13px; letter-spacing:0.5px;"
+          onkeydown="if(event.key==='Enter') saveAndInit()">
+        <button class="ms-btn" onclick="saveAndInit()" style="margin-top:0;">
+          ✅ Enregistrer et continuer
+        </button>
+        <div style="margin-top:12px; font-size:11px; color:var(--text3);">
+          🔒 Le Client ID est stocké uniquement dans <em>ce navigateur</em>, jamais dans le fichier HTML.
+        </div>
+      </div>
+
+      <!-- ÉTAPE 2 : Connexion M365 -->
+      <div id="login-step" style="display:none;">
+        <div class="config-note" style="display:flex; align-items:center; gap:8px; justify-content:space-between;">
+          <span>✅ Azure AD configuré</span>
+          <button onclick="resetConfig()" style="background:none; border:none; color:var(--text3); font-size:11px; cursor:pointer; text-decoration:underline;">Reconfigurer</button>
+        </div>
+        <button class="ms-btn" onclick="signIn()">
+          <svg width="20" height="20" viewBox="0 0 23 23" fill="none">
+            <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+            <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+            <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+            <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
+          </svg>
+          Se connecter avec Microsoft 365
+        </button>
+        <div style="margin-top:12px; font-size:11px; color:var(--text3);">
+          Tu utiliseras ton compte <strong><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="fc999e9d959d9193928899bc9f949d8c9990d19485988e9d8990958d8999d29f9391">[email&#160;protected]</a></strong>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ MAIN APP ══ -->
+  <main id="main-app">
+
+    <!-- ── POMODORO ── -->
+    <div class="card pomodoro-card" style="grid-area:pomodoro; display:flex; flex-direction:column; align-items:center;">
+      <div class="pomo-title" style="align-self:flex-start">🍅 Pomodoro</div>
+
+      <div class="pomo-ring-wrap">
+        <svg class="pomo-ring-svg" viewBox="0 0 180 180">
+          <circle class="pomo-ring-bg" cx="90" cy="90" r="80"/>
+          <circle class="pomo-ring-progress" id="pomo-ring" cx="90" cy="90" r="80"/>
+        </svg>
+        <div class="pomo-time-display">
+          <span class="pomo-time" id="pomo-display">25:00</span>
+          <span class="pomo-label" id="pomo-phase">FOCUS</span>
+        </div>
+      </div>
+
+      <div class="pomo-sessions" id="pomo-dots">
+        <div class="pomo-dot"></div>
+        <div class="pomo-dot"></div>
+        <div class="pomo-dot"></div>
+        <div class="pomo-dot"></div>
+      </div>
+
+      <div class="pomo-controls">
+        <button class="pomo-btn secondary" id="pomo-reset" onclick="resetPomo()" title="Réinitialiser">
+          ↺
+        </button>
+        <button class="pomo-btn primary" id="pomo-play" onclick="togglePomo()">
+          ▶
+        </button>
+        <button class="pomo-btn secondary" onclick="skipPomo()" title="Passer">
+          ⏭
+        </button>
+      </div>
+
+      <div class="pomo-task-section">
+        <div class="pomo-task-label">Tâche en cours</div>
+        <div class="pomo-task-display" id="pomo-active-task" onclick="showTaskPicker()">
+          Cliquer pour choisir une tâche…
+        </div>
+      </div>
+
+      <!-- Stats du jour -->
+      <div style="width:100%; margin-top:16px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; text-align:center;">
+        <div style="background:var(--surface2); border-radius:8px; padding:8px;">
+          <div style="font-family:var(--font-mono); font-size:20px; color:var(--accent);" id="pomo-count-today">0</div>
+          <div style="font-size:10px; color:var(--text3); margin-top:2px;">Pomodoros</div>
+        </div>
+        <div style="background:var(--surface2); border-radius:8px; padding:8px;">
+          <div style="font-family:var(--font-mono); font-size:20px; color:var(--success);" id="pomo-min-today">0</div>
+          <div style="font-size:10px; color:var(--text3); margin-top:2px;">min focus</div>
+        </div>
+        <div style="background:var(--surface2); border-radius:8px; padding:8px;">
+          <div style="font-family:var(--font-mono); font-size:20px; color:var(--warn);" id="pomo-streak">0</div>
+          <div style="font-size:10px; color:var(--text3); margin-top:2px;">série</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 3A DU JOUR + CRAPAUD ── -->
+    <div class="card trois-a-card">
+      <div class="card-header">
+        <div class="card-title">🎯 Mes 3A du jour</div>
+        <div class="card-badge" style="background:#4f8ef720; color:var(--accent); border:1px solid #4f8ef730;" id="a-progress">0/3</div>
+      </div>
+
+      <!-- Crapaud du matin -->
+      <div class="crapaud-row" id="crapaud-row" onclick="toggleCrapaud()">
+        <span class="crapaud-emoji">🐸</span>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:10px; color:var(--text3); margin-bottom:3px; text-transform:uppercase; letter-spacing:1px; font-family:var(--font-mono);">Crapaud du matin</div>
+          <input class="crapaud-input" id="crapaud-input" placeholder="La tâche que tu repousses… à faire EN PREMIER" onclick="event.stopPropagation()" oninput="saveCrapaud()">
+        </div>
+        <div id="crapaud-check" style="font-size:20px; transition:all 0.3s;">🔲</div>
+      </div>
+
+      <!-- 3 impératifs -->
+      <div class="imperatif-list" id="imperatif-list">
+        <!-- generé par JS -->
+      </div>
+
+      <!-- 2mn chrono -->
+      <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <div style="font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:1px; font-family:var(--font-mono);">⚡ Règle des 2 minutes</div>
+          <div style="font-size:10px; color:var(--text3); font-family:var(--font-mono);">Fais-le maintenant ou planifie</div>
+        </div>
+
+        <!-- Input tâche 2mn -->
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+          <input id="twomn-task" placeholder="Quelle tâche rapide ?" style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--text); font-family:var(--font-body); font-size:12px; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='var(--warn)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.key==='Enter') startTwoMin()">
+        </div>
+
+        <!-- Timer visuel 2mn -->
+        <div id="twomn-block" style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:12px; display:flex; align-items:center; gap:12px;">
+
+          <!-- Arc SVG -->
+          <div style="position:relative; width:56px; height:56px; flex-shrink:0;">
+            <svg width="56" height="56" viewBox="0 0 56 56" style="transform:rotate(-90deg);">
+              <circle cx="28" cy="28" r="22" fill="none" stroke="var(--surface3)" stroke-width="4"/>
+              <circle id="twomn-arc" cx="28" cy="28" r="22" fill="none" stroke="var(--warn)" stroke-width="4"
+                stroke-linecap="round"
+                stroke-dasharray="138.2"
+                stroke-dashoffset="0"
+                style="transition: stroke-dashoffset 1s linear, stroke 0.4s;"/>
+            </svg>
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
+              <span id="twomn-display" style="font-family:var(--font-mono); font-size:13px; font-weight:500; color:var(--warn);">2:00</span>
+            </div>
+          </div>
+
+          <!-- État + boutons -->
+          <div style="flex:1; min-width:0;">
+            <div id="twomn-status" style="font-size:12px; color:var(--text2); margin-bottom:8px; font-style:italic;">Prêt à chronométrer…</div>
+            <div style="display:flex; gap:6px;">
+              <button id="twomn-play-btn" onclick="toggleTwoMin()"
+                style="flex:1; padding:7px 0; background:var(--warn); border:none; border-radius:7px; color:#1a1200; font-size:12px; font-weight:600; cursor:pointer; font-family:var(--font-body); transition:all 0.2s;">
+                ▶ Lancer
+              </button>
+              <button onclick="resetTwoMin()"
+                style="padding:7px 10px; background:var(--surface3); border:none; border-radius:7px; color:var(--text2); font-size:12px; cursor:pointer; font-family:var(--font-body); transition:all 0.2s;"
+                title="Réinitialiser">↺</button>
+              <button onclick="planifierTache()"
+                style="padding:7px 10px; background:var(--surface3); border:none; border-radius:7px; color:var(--text2); font-size:12px; cursor:pointer; font-family:var(--font-body); transition:all 0.2s;"
+                title="Trop long → Planifier dans Eisenhower">📊</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-size:10px; color:var(--text3); margin-top:6px; text-align:center; font-style:italic;">
+          ⏱ &lt; 2 min → fais-le maintenant &nbsp;|&nbsp; 📊 &gt; 2 min → planifie dans Eisenhower
+        </div>
+      </div>
+    </div>
+
+    <!-- ── EISENHOWER ── -->
+    <div class="card eisenhower-card">
+      <div class="card-header">
+        <div class="card-title">📊 Matrice Eisenhower</div>
+        <div style="display:flex; gap:6px;">
+          <div style="font-size:11px; color:var(--text3); font-family:var(--font-mono); padding:3px 8px; background:var(--surface2); border-radius:6px;">Glisse tes tâches</div>
+        </div>
+      </div>
+      <!-- Labels axes -->
+      <div style="display:grid; grid-template-columns:20px 1fr; grid-template-rows:20px 1fr; gap:10px; height:calc(100% - 48px);">
+        <div></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; font-size:10px; color:var(--text3); font-family:var(--font-mono); text-align:center; gap:10px;">
+          <div>URGENT</div><div>NON URGENT</div>
+        </div>
+        <div style="display:flex; flex-direction:column; justify-content:space-around; font-size:10px; color:var(--text3); font-family:var(--font-mono); writing-mode:vertical-rl; text-align:center; gap:10px;">
+          <div style="transform:rotate(180deg)">IMPORTANT</div>
+          <div style="transform:rotate(180deg)">PEU IMPT</div>
+        </div>
+        <div class="eisenhower-grid" id="eisenhower-grid">
+          <div class="eisen-quadrant q1" data-q="q1" ondragover="onDragOver(event)" ondrop="onDrop(event, 'q1')" ondragleave="onDragLeave(event)">
+            <div class="eisen-q-header">
+              <span class="eisen-q-title">FAIRE</span>
+              <span class="eisen-q-sub">Immédiatement</span>
+            </div>
+            <div class="eisen-task-list" id="q1-list"></div>
+            <button class="eisen-add-btn" onclick="addEisenTask('q1')">+ Ajouter</button>
+          </div>
+          <div class="eisen-quadrant q2" data-q="q2" ondragover="onDragOver(event)" ondrop="onDrop(event, 'q2')" ondragleave="onDragLeave(event)">
+            <div class="eisen-q-header">
+              <span class="eisen-q-title">PLANIFIER</span>
+              <span class="eisen-q-sub">Avec date</span>
+            </div>
+            <div class="eisen-task-list" id="q2-list"></div>
+            <button class="eisen-add-btn" onclick="addEisenTask('q2')">+ Ajouter</button>
+          </div>
+          <div class="eisen-quadrant q3" data-q="q3" ondragover="onDragOver(event)" ondrop="onDrop(event, 'q3')" ondragleave="onDragLeave(event)">
+            <div class="eisen-q-header">
+              <span class="eisen-q-title">DÉLÉGUER</span>
+              <span class="eisen-q-sub">À quelqu'un</span>
+            </div>
+            <div class="eisen-task-list" id="q3-list"></div>
+            <button class="eisen-add-btn" onclick="addEisenTask('q3')">+ Ajouter</button>
+          </div>
+          <div class="eisen-quadrant q4" data-q="q4" ondragover="onDragOver(event)" ondrop="onDrop(event, 'q4')" ondragleave="onDragLeave(event)">
+            <div class="eisen-q-header">
+              <span class="eisen-q-title">SUPPRIMER</span>
+              <span class="eisen-q-sub">Ou reporter</span>
+            </div>
+            <div class="eisen-task-list" id="q4-list"></div>
+            <button class="eisen-add-btn" onclick="addEisenTask('q4')">+ Ajouter</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── AGENDA ── -->
+    <div class="card agenda-card">
+      <div class="card-header">
+        <div class="card-title">📅 Agenda aujourd'hui</div>
+        <button class="sync-btn" onclick="loadCalendar()" style="padding:4px 8px; font-size:11px;">↻</button>
+      </div>
+      <div id="agenda-content">
+        <div class="loading-row"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>Chargement…</span></div>
+      </div>
+    </div>
+
+    <!-- ── EMAILS FLAGGÉS ── -->
+    <div class="card emails-card">
+      <div class="card-header">
+        <div class="card-title">🚩 Emails flaggés</div>
+        <button class="sync-btn" onclick="loadFlaggedEmails()" style="padding:4px 8px; font-size:11px;">↻</button>
+      </div>
+      <div id="emails-content">
+        <div class="loading-row"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>Chargement…</span></div>
+      </div>
+    </div>
+
+    <!-- ── TODO PANEL ── -->
+    <div class="card todo-card">
+      <div class="card-header">
+        <div class="card-title">✅ To Do</div>
+        <button class="sync-btn" onclick="loadToDo()" style="padding:4px 8px; font-size:11px;">↻</button>
+      </div>
+      <div style="font-size:11px; color:var(--text3); margin-bottom:10px; font-family:var(--font-mono);">Glisse vers Eisenhower →</div>
+      <div id="todo-content">
+        <div class="loading-row"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>Chargement…</span></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ══ MODAL AJOUT TÂCHE ══ -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3 id="modal-title">Ajouter une tâche</h3>
+    <input class="modal-input" id="modal-input" placeholder="Description de la tâche…" onkeydown="if(event.key==='Enter') modalConfirm()">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-primary" onclick="modalConfirm()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ NOTIFICATION ══ -->
+<div id="notif"></div>
+
+<!-- ══ AUDIO (Pomodoro bell) ══ -->
+<audio id="pomo-bell" preload="auto">
+  <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA..." type="audio/wav">
+</audio>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+// ════════════════════════════════════════════════════════════════
+//  ⚙️  CONFIGURATION DYNAMIQUE — clientId stocké dans localStorage
+// ════════════════════════════════════════════════════════════════
+const REDIRECT_URI = window.location.origin + window.location.pathname;
+
+function getClientId() { return localStorage.getItem("mit_azure_client_id") || ""; }
+function saveClientId(id) { localStorage.setItem("mit_azure_client_id", id.trim()); }
+function clearClientId() { localStorage.removeItem("mit_azure_client_id"); }
+
+function buildMsalConfig(clientId) {
+  return {
+    auth: { clientId, authority: "https://login.microsoftonline.com/common", redirectUri: REDIRECT_URI },
+    cache: { cacheLocation: "sessionStorage" }
+  };
+}
+
+const SCOPES = ["User.Read","Tasks.ReadWrite","Mail.Read","Calendars.Read"];
+
+// ════════════════════════════════════════════════════════════════
+//  MSAL
+// ════════════════════════════════════════════════════════════════
+let msalInstance = null;
+let currentAccount = null;
+let accessToken = null;
+
+function initMSAL() {
+  const clientId = getClientId();
+  if (!clientId) { showSetupScreen(); return; }
+  try {
+    msalInstance = new msal.PublicClientApplication(buildMsalConfig(clientId));
+    msalInstance.handleRedirectPromise().then(resp => {
+      if (resp) { handleLoginResponse(resp); }
+      else {
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+          currentAccount = accounts[0];
+          showApp(currentAccount);
+          acquireToken().then(() => loadAllData());
+        } else {
+          showAuthScreen();
+        }
+      }
+    }).catch(e => { console.error("MSAL handleRedirect:", e); showAuthScreen(); });
+  } catch(e) {
+    console.error("MSAL init error:", e);
+    showAuthScreen();
+  }
+}
+
+function showSetupScreen() {
+  document.getElementById("auth-screen").style.display = "flex";
+  document.getElementById("setup-step").style.display = "block";
+  document.getElementById("login-step").style.display = "none";
+}
+
+function showAuthScreen() {
+  document.getElementById("auth-screen").style.display = "flex";
+  document.getElementById("setup-step").style.display = "none";
+  document.getElementById("login-step").style.display = "block";
+}
+
+function saveAndInit() {
+  const id = document.getElementById("setup-client-id").value.trim();
+  if (!id || id.length < 10) { showNotif("❌ Client ID invalide (trop court)"); return; }
+  saveClientId(id);
+  document.getElementById("setup-step").style.display = "none";
+  document.getElementById("login-step").style.display = "block";
+  msalInstance = new msal.PublicClientApplication(buildMsalConfig(id));
+  msalInstance.handleRedirectPromise().catch(() => {});
+  showNotif("✅ Client ID enregistré !");
+}
+
+function resetConfig() {
+  if (!confirm("Supprimer la configuration Azure et se déconnecter ?")) return;
+  clearClientId();
+  if (msalInstance) { try { msalInstance.clearCache(); } catch(e) {} }
+  location.reload();
+}
+
+async function signIn() {
+  if (!msalInstance) return showNotif("❌ Configure d'abord le Client ID Azure AD");
+  try {
+    await msalInstance.loginRedirect({ scopes: SCOPES });
+  } catch(e) {
+    showNotif("Erreur de connexion : " + e.message);
+  }
+}
+
+function handleLoginResponse(resp) {
+  currentAccount = resp.account;
+  accessToken = resp.accessToken;
+  showApp(currentAccount);
+  loadAllData();
+}
+
+async function acquireToken() {
+  if (!msalInstance || !currentAccount) return null;
+  try {
+    const resp = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account: currentAccount });
+    accessToken = resp.accessToken;
+    return accessToken;
+  } catch(e) {
+    try {
+      const resp = await msalInstance.acquireTokenPopup({ scopes: SCOPES });
+      accessToken = resp.accessToken;
+      return accessToken;
+    } catch(e2) { return null; }
+  }
+}
+
+async function graphGet(endpoint) {
+  const token = await acquireToken();
+  if (!token) throw new Error("Not authenticated");
+  const r = await fetch("https://graph.microsoft.com/v1.0" + endpoint, {
+    headers: { Authorization: "Bearer " + token }
+  });
+  if (!r.ok) throw new Error("Graph error " + r.status);
+  return r.json();
+}
+
+async function graphPatch(endpoint, body) {
+  const token = await acquireToken();
+  if (!token) return null;
+  const r = await fetch("https://graph.microsoft.com/v1.0" + endpoint, {
+    method: "PATCH",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return r.ok;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  APP STATE
+// ════════════════════════════════════════════════════════════════
+function showApp(account) {
+  document.getElementById("auth-screen").style.display = "none";
+  document.getElementById("main-app").classList.add("active");
+  document.getElementById("user-info").style.display = "flex";
+
+  const name = account.name || account.username;
+  const initials = name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2);
+  document.getElementById("user-name").textContent = name.split(" ")[0];
+  document.getElementById("user-avatar").textContent = initials;
+
+  initImperatifs();
+  loadSavedState();
+  updateTopDate();
+  setInterval(updateTopDate, 60000);
+}
+
+function updateTopDate() {
+  const now = new Date();
+  const opts = { weekday: "long", day: "numeric", month: "long" };
+  document.getElementById("top-date").textContent = now.toLocaleDateString("fr-FR", opts);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  LOCAL STORAGE
+// ════════════════════════════════════════════════════════════════
+const TODAY_KEY = new Date().toISOString().slice(0, 10);
+
+function saveLocal(key, val) {
+  try { localStorage.setItem("mit_" + key + "_" + TODAY_KEY, JSON.stringify(val)); } catch(e) {}
+}
+function loadLocal(key, def = null) {
+  try {
+    const v = localStorage.getItem("mit_" + key + "_" + TODAY_KEY);
+    return v ? JSON.parse(v) : def;
+  } catch(e) { return def; }
+}
+
+function loadSavedState() {
+  // Crapaud
+  const crapaud = loadLocal("crapaud", { text: "", done: false });
+  document.getElementById("crapaud-input").value = crapaud.text;
+  if (crapaud.done) {
+    document.getElementById("crapaud-row").classList.add("done");
+    document.getElementById("crapaud-check").textContent = "✅";
+  }
+
+  // Impératifs
+  const imps = loadLocal("imperatifs", [{text:"",done:false},{text:"",done:false},{text:"",done:false}]);
+  imps.forEach((imp, i) => {
+    const input = document.getElementById("imp-input-" + i);
+    const item = document.getElementById("imp-item-" + i);
+    if (input) input.value = imp.text;
+    if (item && imp.done) item.classList.add("done");
+  });
+  updateAProgress();
+
+  // Eisenhower
+  const eisen = loadLocal("eisenhower", { q1:[], q2:[], q3:[], q4:[] });
+  ["q1","q2","q3","q4"].forEach(q => {
+    (eisen[q] || []).forEach(t => addEisenTaskDirect(q, t.text, t.id, false));
+  });
+
+  // Pomodoro stats
+  const ps = loadLocal("pomo_stats", { count: 0, mins: 0 });
+  document.getElementById("pomo-count-today").textContent = ps.count;
+  document.getElementById("pomo-min-today").textContent = ps.mins;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  POMODORO
+// ════════════════════════════════════════════════════════════════
+const POMO_FOCUS = 25 * 60;
+const POMO_BREAK = 5 * 60;
+const POMO_LONG  = 15 * 60;
+
+let pomoTimer = null;
+let pomoRunning = false;
+let pomoPhase = "focus";   // focus | break | longbreak
+let pomoRemaining = POMO_FOCUS;
+let pomoSession = 0;
+let pomoCurrent = 0;
+
+const CIRCUM = 2 * Math.PI * 80;
+
+function togglePomo() {
+  pomoRunning = !pomoRunning;
+  document.getElementById("pomo-play").textContent = pomoRunning ? "⏸" : "▶";
+  if (pomoRunning) {
+    pomoTimer = setInterval(tickPomo, 1000);
+  } else {
+    clearInterval(pomoTimer);
+  }
+}
+
+function tickPomo() {
+  pomoRemaining--;
+  updatePomoDisplay();
+  if (pomoRemaining <= 0) {
+    clearInterval(pomoTimer);
+    pomoRunning = false;
+    document.getElementById("pomo-play").textContent = "▶";
+    pomoDone();
+  }
+}
+
+function pomoDone() {
+  playBell();
+  if (pomoPhase === "focus") {
+    pomoCurrent++;
+    updatePomoDots();
+    // Save stats
+    const ps = loadLocal("pomo_stats", { count: 0, mins: 0 });
+    ps.count++; ps.mins += 25;
+    saveLocal("pomo_stats", ps);
+    document.getElementById("pomo-count-today").textContent = ps.count;
+    document.getElementById("pomo-min-today").textContent = ps.mins;
+
+    if (pomoCurrent % 4 === 0) {
+      pomoPhase = "longbreak";
+      pomoRemaining = POMO_LONG;
+      showNotif("🎉 4 Pomodoros ! Longue pause de 15 minutes");
+    } else {
+      pomoPhase = "break";
+      pomoRemaining = POMO_BREAK;
+      showNotif("✅ Pomodoro terminé ! Pause 5 minutes");
+    }
+  } else {
+    pomoPhase = "focus";
+    pomoRemaining = POMO_FOCUS;
+    showNotif("🍅 C'est reparti ! Focus 25 minutes");
+    pomoSession++;
+    updatePomoDots();
+  }
+  updatePomoDisplay();
+}
+
+function resetPomo() {
+  clearInterval(pomoTimer);
+  pomoRunning = false;
+  pomoPhase = "focus";
+  pomoRemaining = POMO_FOCUS;
+  document.getElementById("pomo-play").textContent = "▶";
+  updatePomoDisplay();
+}
+
+function skipPomo() {
+  clearInterval(pomoTimer);
+  pomoRunning = false;
+  document.getElementById("pomo-play").textContent = "▶";
+  pomoDone();
+}
+
+function updatePomoDisplay() {
+  const m = Math.floor(pomoRemaining / 60).toString().padStart(2, "0");
+  const s = (pomoRemaining % 60).toString().padStart(2, "0");
+  document.getElementById("pomo-display").textContent = m + ":" + s;
+
+  const total = pomoPhase === "focus" ? POMO_FOCUS : (pomoPhase === "break" ? POMO_BREAK : POMO_LONG);
+  const progress = pomoRemaining / total;
+  const dash = CIRCUM * (1 - progress);
+  const ring = document.getElementById("pomo-ring");
+  ring.style.strokeDashoffset = dash;
+  ring.className = "pomo-ring-progress" + (pomoPhase !== "focus" ? " break" : "");
+
+  const phaseLabels = { focus: "FOCUS", break: "PAUSE", longbreak: "GRANDE PAUSE" };
+  document.getElementById("pomo-phase").textContent = phaseLabels[pomoPhase];
+}
+
+function updatePomoDots() {
+  const dots = document.querySelectorAll(".pomo-dot");
+  dots.forEach((d, i) => {
+    d.classList.toggle("done", i < (pomoCurrent % 4));
+  });
+}
+
+function playBell() {
+  // AudioContext bell
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.5);
+    gain.gain.setValueAtTime(0.5, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.2);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 1.2);
+  } catch(e) {}
+}
+
+let twoMinTimer = null;
+let twoMinRunning = false;
+let twoMinRemaining = 120;
+const TWOMN_TOTAL = 120;
+const TWOMN_CIRCUM = 2 * Math.PI * 22; // 138.23
+
+function toggleTwoMin() {
+  if (twoMinRemaining <= 0) { resetTwoMin(); return; }
+  twoMinRunning = !twoMinRunning;
+  const btn = document.getElementById("twomn-play-btn");
+  if (twoMinRunning) {
+    btn.textContent = "⏸ Pause";
+    document.getElementById("twomn-status").textContent = "En cours — fais-le maintenant !";
+    document.getElementById("twomn-status").style.color = "var(--warn)";
+    twoMinTimer = setInterval(tickTwoMin, 1000);
+  } else {
+    btn.textContent = "▶ Reprendre";
+    document.getElementById("twomn-status").textContent = "En pause…";
+    document.getElementById("twomn-status").style.color = "var(--text3)";
+    clearInterval(twoMinTimer);
+  }
+}
+
+function tickTwoMin() {
+  twoMinRemaining--;
+  updateTwoMinDisplay();
+  if (twoMinRemaining <= 30 && twoMinRemaining > 0) {
+    document.getElementById("twomn-arc").style.stroke = "var(--danger)";
+    document.getElementById("twomn-display").style.color = "var(--danger)";
+  }
+  if (twoMinRemaining <= 0) {
+    clearInterval(twoMinTimer);
+    twoMinRunning = false;
+    document.getElementById("twomn-play-btn").textContent = "↺ Recommencer";
+    document.getElementById("twomn-status").textContent = "Temps écoulé ! Trop long → planifie-le 📊";
+    document.getElementById("twomn-status").style.color = "var(--danger)";
+    playBell();
+    showNotif("⏰ 2 minutes écoulées ! Planifie cette tâche dans Eisenhower");
+  }
+}
+
+function resetTwoMin() {
+  clearInterval(twoMinTimer);
+  twoMinRunning = false;
+  twoMinRemaining = TWOMN_TOTAL;
+  document.getElementById("twomn-play-btn").textContent = "▶ Lancer";
+  document.getElementById("twomn-status").textContent = "Prêt à chronométrer…";
+  document.getElementById("twomn-status").style.color = "var(--text2)";
+  document.getElementById("twomn-arc").style.stroke = "var(--warn)";
+  document.getElementById("twomn-display").style.color = "var(--warn)";
+  updateTwoMinDisplay();
+}
+
+function updateTwoMinDisplay() {
+  const m = Math.floor(twoMinRemaining / 60).toString().padStart(1,"0");
+  const s = (twoMinRemaining % 60).toString().padStart(2,"0");
+  document.getElementById("twomn-display").textContent = m + ":" + s;
+  const progress = twoMinRemaining / TWOMN_TOTAL;
+  document.getElementById("twomn-arc").style.strokeDashoffset = TWOMN_CIRCUM * (1 - progress);
+}
+
+function planifierTache() {
+  const task = document.getElementById("twomn-task")?.value.trim();
+  if (!task) { showNotif("Saisis d'abord le nom de la tâche"); return; }
+  resetTwoMin();
+  openModal("Planifier dans Eisenhower", task, text => {
+    addEisenTaskDirect("q2", text);
+    showNotif("📊 Tâche ajoutée dans PLANIFIER !");
+    document.getElementById("twomn-task").value = "";
+  });
+}
+
+function startTwoMin() { toggleTwoMin(); }
+
+// ════════════════════════════════════════════════════════════════
+//  3A DU JOUR
+// ════════════════════════════════════════════════════════════════
+function initImperatifs() {
+  const list = document.getElementById("imperatif-list");
+  list.innerHTML = "";
+  for (let i = 0; i < 3; i++) {
+    list.innerHTML += `
+      <div class="imperatif-item" id="imp-item-${i}">
+        <span class="imperatif-num">A${i+1}</span>
+        <input class="imperatif-input" id="imp-input-${i}" placeholder="Impératif #${i+1} du jour…" oninput="saveImperatifs()">
+        <div class="imperatif-check" onclick="toggleImperatif(${i})" title="Marquer fait">✓</div>
+      </div>`;
+  }
+}
+
+function toggleImperatif(i) {
+  const item = document.getElementById("imp-item-" + i);
+  item.classList.toggle("done");
+  saveImperatifs();
+  updateAProgress();
+}
+
+function saveImperatifs() {
+  const imps = [];
+  for (let i = 0; i < 3; i++) {
+    imps.push({
+      text: document.getElementById("imp-input-" + i).value,
+      done: document.getElementById("imp-item-" + i).classList.contains("done")
+    });
+  }
+  saveLocal("imperatifs", imps);
+  updateAProgress();
+}
+
+function updateAProgress() {
+  let done = 0;
+  for (let i = 0; i < 3; i++) {
+    if (document.getElementById("imp-item-" + i)?.classList.contains("done")) done++;
+  }
+  const badge = document.getElementById("a-progress");
+  badge.textContent = done + "/3";
+  badge.style.background = done === 3 ? "#34c97e20" : "#4f8ef720";
+  badge.style.color = done === 3 ? "var(--success)" : "var(--accent)";
+}
+
+function toggleCrapaud() {
+  const row = document.getElementById("crapaud-row");
+  const check = document.getElementById("crapaud-check");
+  row.classList.toggle("done");
+  check.textContent = row.classList.contains("done") ? "✅" : "🔲";
+  saveCrapaud();
+}
+
+function saveCrapaud() {
+  saveLocal("crapaud", {
+    text: document.getElementById("crapaud-input").value,
+    done: document.getElementById("crapaud-row").classList.contains("done")
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  EISENHOWER
+// ════════════════════════════════════════════════════════════════
+let draggedTask = null;
+let draggedFrom = null;
+
+function addEisenTask(q) {
+  openModal("Nouvelle tâche — " + {q1:"FAIRE",q2:"PLANIFIER",q3:"DÉLÉGUER",q4:"SUPPRIMER"}[q], "", text => {
+    if (text.trim()) addEisenTaskDirect(q, text.trim());
+  });
+}
+
+function addEisenTaskDirect(q, text, id = null, save = true) {
+  const taskId = id || ("t_" + Date.now() + "_" + Math.random().toString(36).slice(2));
+  const list = document.getElementById(q + "-list");
+  if (!list) return;
+
+  const div = document.createElement("div");
+  div.className = "eisen-task";
+  div.draggable = true;
+  div.dataset.id = taskId;
+  div.dataset.q = q;
+  div.dataset.text = text;
+  div.innerHTML = `<span class="eisen-task-text">${escHtml(text)}</span><span class="eisen-task-del" onclick="removeEisenTask('${taskId}','${q}')">×</span>`;
+
+  div.addEventListener("dragstart", e => {
+    draggedTask = { id: taskId, text, q };
+    draggedFrom = q;
+    div.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+  });
+  div.addEventListener("dragend", () => div.classList.remove("dragging"));
+
+  list.appendChild(div);
+  if (save) saveEisenhower();
+}
+
+function removeEisenTask(id, q) {
+  const list = document.getElementById(q + "-list");
+  const el = list?.querySelector(`[data-id="${id}"]`);
+  if (el) { el.remove(); saveEisenhower(); }
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.currentTarget.classList.add("drag-over");
+}
+function onDragLeave(e) { e.currentTarget.classList.remove("drag-over"); }
+
+function onDrop(e, q) {
+  e.preventDefault();
+  e.currentTarget.classList.remove("drag-over");
+  if (!draggedTask) return;
+
+  if (draggedTask.q && draggedTask.q !== q) {
+    removeEisenTask(draggedTask.id, draggedTask.q);
+  } else if (!draggedTask.q) {
+    // from Todo panel — don't remove from there, just add
+  }
+
+  addEisenTaskDirect(q, draggedTask.text, draggedTask.id);
+  draggedTask = null;
+}
+
+function saveEisenhower() {
+  const data = {};
+  ["q1","q2","q3","q4"].forEach(q => {
+    data[q] = Array.from(document.getElementById(q + "-list").querySelectorAll(".eisen-task")).map(el => ({
+      id: el.dataset.id, text: el.dataset.text
+    }));
+  });
+  saveLocal("eisenhower", data);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MICROSOFT GRAPH — CALENDAR
+// ════════════════════════════════════════════════════════════════
+async function loadCalendar() {
+  const el = document.getElementById("agenda-content");
+  el.innerHTML = loadingHTML();
+
+  try {
+    const now = new Date();
+    const start = new Date(now); start.setHours(0,0,0,0);
+    const end = new Date(now); end.setHours(23,59,59,999);
+
+    const data = await graphGet(
+      `/me/calendarView?startDateTime=${start.toISOString()}&endDateTime=${end.toISOString()}&$select=subject,start,end,isOnlineMeeting,organizer&$orderby=start/dateTime&$top=20`
+    );
+
+    if (!data.value?.length) {
+      el.innerHTML = `<div class="empty-state">📭 Aucun événement aujourd'hui</div>`;
+      return;
+    }
+
+    const nowMs = Date.now();
+    el.innerHTML = `<div class="agenda-list">` +
+      data.value.map(ev => {
+        const s = new Date(ev.start.dateTime || ev.start.date);
+        const e = new Date(ev.end.dateTime || ev.end.date);
+        const past = e < nowMs;
+        const now2 = s <= nowMs && e >= nowMs;
+        const hhmm = s.toLocaleTimeString("fr-FR", {hour:"2-digit",minute:"2-digit"});
+        return `<div class="agenda-item${past?" past":""}${now2?" now":""}">
+          <div class="agenda-time">${hhmm}</div>
+          <div class="agenda-content">
+            <div class="agenda-subject">${escHtml(ev.subject || "(Sans titre)")}</div>
+            <div class="agenda-meta">${ev.organizer?.emailAddress?.name || ""}</div>
+          </div>
+        </div>`;
+      }).join("") + `</div>`;
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state">⚠️ Erreur chargement agenda<br><small>${e.message}</small></div>`;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MICROSOFT GRAPH — EMAILS FLAGGÉS
+// ════════════════════════════════════════════════════════════════
+async function loadFlaggedEmails() {
+  const el = document.getElementById("emails-content");
+  el.innerHTML = loadingHTML();
+
+  try {
+    const data = await graphGet(
+      `/me/messages?$filter=flag/flagStatus eq 'flagged'&$select=subject,from,receivedDateTime,flag&$orderby=receivedDateTime desc&$top=10`
+    );
+
+    if (!data.value?.length) {
+      el.innerHTML = `<div class="empty-state">🎉 Aucun email flaggé !</div>`;
+      return;
+    }
+
+    el.innerHTML = `<div class="email-list">` +
+      data.value.map(m => {
+        const from = m.from?.emailAddress?.name || m.from?.emailAddress?.address || "?";
+        const date = new Date(m.receivedDateTime).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit"});
+        const subject = m.subject || "(Sans objet)";
+        return `<div class="email-item" onclick="addEmailToEisen('${escHtml(subject).replace(/'/g,"\\'")}')">
+          <div class="email-flag">🚩</div>
+          <div class="email-body">
+            <div class="email-from">${escHtml(from)}</div>
+            <div class="email-subject">${escHtml(subject)}</div>
+            <div class="email-date">${date}</div>
+          </div>
+          <button class="add-to-eisen-btn" title="Ajouter à Eisenhower" onclick="event.stopPropagation(); showEmailToEisen('${escHtml(subject).replace(/'/g,"\\'")}')">⊞</button>
+        </div>`;
+      }).join("") + `</div>`;
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state">⚠️ Erreur chargement emails<br><small>${e.message}</small></div>`;
+  }
+}
+
+function showEmailToEisen(subject) {
+  openModal("Ajouter dans Eisenhower", subject, (text) => {
+    addEisenTaskDirect("q1", text);
+    showNotif("✅ Ajouté dans FAIRE !");
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MICROSOFT GRAPH — TO DO
+// ════════════════════════════════════════════════════════════════
+let todoTasks = [];
+
+async function loadToDo() {
+  const el = document.getElementById("todo-content");
+  el.innerHTML = loadingHTML();
+
+  try {
+    // Get all task lists
+    const lists = await graphGet(`/me/todo/lists?$top=20`);
+    if (!lists.value?.length) {
+      el.innerHTML = `<div class="empty-state">📭 Aucune liste To Do</div>`;
+      return;
+    }
+
+    let allTasks = [];
+    for (const list of lists.value.slice(0, 5)) {
+      try {
+        const tasks = await graphGet(`/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=20`);
+        tasks.value?.forEach(t => allTasks.push({ ...t, listName: list.displayName, listId: list.id }));
+      } catch(e) {}
+    }
+
+    todoTasks = allTasks;
+
+    if (!allTasks.length) {
+      el.innerHTML = `<div class="empty-state">🎉 Toutes les tâches sont terminées !</div>`;
+      return;
+    }
+
+    el.innerHTML = `<div class="todo-list">` +
+      allTasks.slice(0, 20).map(t => {
+        const text = t.title || "(Sans titre)";
+        return `<div class="todo-item" draggable="true"
+          data-id="${t.id}" data-text="${escHtml(text).replace(/"/g,'&quot;')}"
+          ondragstart="onTodoDragStart(event, '${escHtml(text).replace(/'/g,"\\'")}')">
+          <span class="drag-handle">⠿</span>
+          <span class="todo-item-text" title="${escHtml(t.listName)}">${escHtml(text)}</span>
+          <button class="todo-item-pomo" title="Définir comme tâche Pomodoro" onclick="setPomoTask('${escHtml(text).replace(/'/g,"\\'")}')">🍅</button>
+        </div>`;
+      }).join("") + `</div>`;
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state">⚠️ Erreur To Do<br><small>${e.message}</small></div>`;
+  }
+}
+
+function onTodoDragStart(e, text) {
+  draggedTask = { id: "todo_" + Date.now(), text, q: null };
+  e.dataTransfer.effectAllowed = "move";
+}
+
+let pomoTaskText = "";
+function setPomoTask(text) {
+  pomoTaskText = text;
+  const el = document.getElementById("pomo-active-task");
+  el.textContent = text;
+  el.classList.add("has-task");
+  showNotif("🍅 Tâche définie pour le Pomodoro");
+}
+
+function showTaskPicker() {
+  if (!todoTasks.length) return showNotif("Charge d'abord tes tâches To Do");
+  openModal("Choisir la tâche Pomodoro", pomoTaskText, text => {
+    if (text) setPomoTask(text);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  SYNC ALL
+// ════════════════════════════════════════════════════════════════
+async function loadAllData() {
+  loadCalendar();
+  loadFlaggedEmails();
+  loadToDo();
+}
+
+async function syncAll() {
+  const btn = document.getElementById("sync-btn");
+  btn.classList.add("syncing");
+  showNotif("🔄 Synchronisation en cours…");
+  await loadAllData();
+  btn.classList.remove("syncing");
+  showNotif("✅ Synchronisé !");
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MODAL
+// ════════════════════════════════════════════════════════════════
+let modalCallback = null;
+
+function openModal(title, defaultVal, cb) {
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-input").value = defaultVal || "";
+  document.getElementById("modal-overlay").classList.add("active");
+  modalCallback = cb;
+  setTimeout(() => document.getElementById("modal-input").focus(), 50);
+}
+
+function closeModal() {
+  document.getElementById("modal-overlay").classList.remove("active");
+  modalCallback = null;
+}
+
+function modalConfirm() {
+  const val = document.getElementById("modal-input").value.trim();
+  closeModal();
+  if (modalCallback && val) modalCallback(val);
+}
+
+document.getElementById("modal-overlay").addEventListener("click", e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+// ════════════════════════════════════════════════════════════════
+//  NOTIFICATION
+// ════════════════════════════════════════════════════════════════
+let notifTimer = null;
+function showNotif(msg) {
+  const el = document.getElementById("notif");
+  el.textContent = msg;
+  el.classList.add("show");
+  if (notifTimer) clearTimeout(notifTimer);
+  notifTimer = setTimeout(() => el.classList.remove("show"), 3500);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  CONFIG HELP
+// ════════════════════════════════════════════════════════════════
+function showConfigHelp() {
+  openModal("Configuration Azure AD", "", () => {});
+  document.getElementById("modal-title").textContent = "Comment configurer ?";
+  document.getElementById("modal-input").style.display = "none";
+  setTimeout(() => {
+    document.querySelector(".modal").innerHTML = `
+      <h3>Configuration Azure AD</h3>
+      <div style="font-size:13px; color:var(--text2); line-height:1.7; margin-bottom:16px;">
+        <strong>1.</strong> Aller sur <a href="https://portal.azure.com" target="_blank" style="color:var(--accent)">portal.azure.com</a><br>
+        <strong>2.</strong> Azure Active Directory → Inscriptions d'applications → Nouvelle inscription<br>
+        <strong>3.</strong> Nom : <code>MonITinéraire</code>, Type : Compte unique ou multi-locataire<br>
+        <strong>4.</strong> URI de redirection : <code>${window.location.origin + window.location.pathname}</code><br>
+        <strong>5.</strong> Copier l'<strong>ID d'application (client)</strong><br>
+        <strong>6.</strong> Permissions API : ajouter <code>Tasks.ReadWrite</code>, <code>Mail.Read</code>, <code>Calendars.Read</code><br>
+        <strong>7.</strong> Coller le clientId dans le fichier HTML (ligne ~14)
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal(); document.querySelector('.modal').innerHTML=''">Fermer</button>
+      </div>`;
+  }, 10);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  UTILS
+// ════════════════════════════════════════════════════════════════
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function loadingHTML() {
+  return `<div class="loading-row"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>Chargement…</span></div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════════════
+updateTopDate();
+initImperatifs();
+updatePomoDisplay
