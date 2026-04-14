@@ -659,6 +659,23 @@
   }
   .todo-item:hover .todo-item-pomo { opacity: 1; }
   .todo-item:hover .todo-item-imperatif { opacity: 1 !important; }
+  .in-matrix-badge {
+    font-size: 9px; font-family: var(--font-mono);
+    background: var(--accent2); color: #fff;
+    border-radius: 4px; padding: 1px 5px;
+    flex-shrink: 0; letter-spacing: 0.5px;
+    opacity: 0.85;
+  }
+  .in-matrix-badge.q1 { background: var(--q1b); }
+  .in-matrix-badge.q2 { background: var(--q2b); }
+  .in-matrix-badge.q3 { background: var(--q3b); }
+  .in-matrix-badge.q4 { background: var(--q4b); color: var(--bg); }
+  .email-in-matrix {
+    font-size: 9px; font-family: var(--font-mono);
+    background: var(--accent); color: #fff;
+    border-radius: 4px; padding: 1px 5px;
+    flex-shrink: 0; letter-spacing: 0.5px;
+  }
 
   /* ── LOADING ── */
   .loading-row {
@@ -1672,6 +1689,50 @@ function saveEisenhower() {
   });
   // Sauvegarde persistante (sans date) pour la matrice
   try { localStorage.setItem("mit_eisenhower_persist", JSON.stringify(data)); } catch(e) {}
+  // Rafraîchit les badges sur To Do et emails
+  refreshMatrixBadges();
+}
+
+function getMatrixTexts() {
+  // Retourne un map { texte_lowercase: quadrant }
+  const map = {};
+  ["q1","q2","q3","q4"].forEach(q => {
+    document.getElementById(q + "-list")?.querySelectorAll(".eisen-task").forEach(el => {
+      map[el.dataset.text?.toLowerCase()] = q;
+    });
+  });
+  return map;
+}
+
+function refreshMatrixBadges() {
+  const map = getMatrixTexts();
+  const qLabels = { q1:"FAIRE", q2:"PLANIF.", q3:"DÉLÉG.", q4:"SUPPR." };
+
+  // Badges sur les tâches To Do
+  document.querySelectorAll(".todo-item").forEach(item => {
+    const text = item.dataset.text?.toLowerCase();
+    const existing = item.querySelector(".in-matrix-badge");
+    if (existing) existing.remove();
+    if (text && map[text]) {
+      const badge = document.createElement("span");
+      badge.className = "in-matrix-badge " + map[text];
+      badge.textContent = qLabels[map[text]];
+      item.querySelector(".todo-item-text").after(badge);
+    }
+  });
+
+  // Badges sur les emails flaggés
+  document.querySelectorAll(".email-item").forEach(item => {
+    const text = item.dataset.subj?.toLowerCase();
+    const existing = item.querySelector(".email-in-matrix");
+    if (existing) existing.remove();
+    if (text && map[text]) {
+      const badge = document.createElement("span");
+      badge.className = "email-in-matrix";
+      badge.textContent = "📊 " + qLabels[map[text]];
+      item.querySelector(".email-body").appendChild(badge);
+    }
+  });
 }
 
 function loadEisenhowerPersist() {
@@ -1705,11 +1766,14 @@ async function loadCalendar() {
     const nowMs = Date.now();
     el.innerHTML = `<div class="agenda-list">` +
       data.value.map(ev => {
-        const s = new Date(ev.start.dateTime || ev.start.date);
-        const e = new Date(ev.end.dateTime || ev.end.date);
+        // Graph retourne UTC sans 'Z' — on force l'interprétation UTC puis conversion locale
+        const startStr = ev.start.dateTime ? ev.start.dateTime.endsWith('Z') ? ev.start.dateTime : ev.start.dateTime + 'Z' : ev.start.date;
+        const endStr   = ev.end.dateTime   ? ev.end.dateTime.endsWith('Z')   ? ev.end.dateTime   : ev.end.dateTime   + 'Z' : ev.end.date;
+        const s = new Date(startStr);
+        const e = new Date(endStr);
         const past = e < nowMs;
         const now2 = s <= nowMs && e >= nowMs;
-        const hhmm = s.toLocaleTimeString("fr-FR", {hour:"2-digit",minute:"2-digit"});
+        const hhmm = s.toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit", timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone});
         return `<div class="agenda-item${past?" past":""}${now2?" now":""}">
           <div class="agenda-time">${hhmm}</div>
           <div class="agenda-content">
@@ -1748,7 +1812,10 @@ async function loadFlaggedEmails() {
         const from = m.from?.emailAddress?.name || m.from?.emailAddress?.address || "?";
         const date = new Date(m.receivedDateTime).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit"});
         const subject = m.subject || "(Sans objet)";
-        return `<div class="email-item" onclick="addEmailToEisen('${escHtml(subject).replace(/'/g,"\\'")}')">
+        return `<div class="email-item" draggable="true"
+          ondragstart="draggedTask={id:'email_'+Date.now(),text:this.dataset.subj,q:null}; event.dataTransfer.effectAllowed='move';"
+          data-subj="${escHtml(subject)}"
+          onclick="addEmailToEisen('${escHtml(subject).replace(/'/g,"\\'")}')">
           <div class="email-flag">🚩</div>
           <div class="email-body">
             <div class="email-from">${escHtml(from)}</div>
@@ -1824,6 +1891,11 @@ function onTodoDragStart(e, text) {
   e.dataTransfer.effectAllowed = "move";
 }
 
+function onEmailDragStart(e, subject) {
+  draggedTask = { id: "email_" + Date.now(), text: subject, q: null };
+  e.dataTransfer.effectAllowed = "move";
+}
+
 let pomoTaskText = "";
 function setPomoTask(text) {
   pomoTaskText = text;
@@ -1864,9 +1936,8 @@ function showTaskPicker() {
 //  SYNC ALL
 // ════════════════════════════════════════════════════════════════
 async function loadAllData() {
-  loadCalendar();
-  loadFlaggedEmails();
-  loadToDo();
+  await Promise.allSettled([loadCalendar(), loadFlaggedEmails(), loadToDo()]);
+  setTimeout(refreshMatrixBadges, 500);
 }
 
 async function syncAll() {
