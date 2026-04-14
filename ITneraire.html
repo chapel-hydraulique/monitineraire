@@ -435,6 +435,7 @@
   .imperatif-item:hover { border-color: var(--accent); border-style: solid; }
   .imperatif-item.filled { border-style: solid; border-color: var(--border); }
   .imperatif-item.done { opacity: 0.4; }
+  .imperatif-item.drag-over { border-color: var(--accent) !important; border-style: solid !important; background: #4f8ef715 !important; transform: scale(1.01); }
 
   .imperatif-num {
     font-family: var(--font-mono);
@@ -657,6 +658,7 @@
     background: none; border: none; color: var(--warn);
   }
   .todo-item:hover .todo-item-pomo { opacity: 1; }
+  .todo-item:hover .todo-item-imperatif { opacity: 1 !important; }
 
   /* ── LOADING ── */
   .loading-row {
@@ -1516,12 +1518,28 @@ function initImperatifs() {
   const list = document.getElementById("imperatif-list");
   list.innerHTML = "";
   for (let i = 0; i < 3; i++) {
-    list.innerHTML += `
-      <div class="imperatif-item" id="imp-item-${i}">
-        <span class="imperatif-num">A${i+1}</span>
-        <input class="imperatif-input" id="imp-input-${i}" placeholder="Impératif #${i+1} du jour…" oninput="saveImperatifs()">
-        <div class="imperatif-check" onclick="toggleImperatif(${i})" title="Marquer fait">✓</div>
-      </div>`;
+    const div = document.createElement("div");
+    div.className = "imperatif-item";
+    div.id = "imp-item-" + i;
+    div.innerHTML = `
+      <span class="imperatif-num">A${i+1}</span>
+      <input class="imperatif-input" id="imp-input-${i}" placeholder="Impératif #${i+1} du jour… (ou glisse une tâche)" oninput="saveImperatifs()">
+      <div class="imperatif-check" onclick="toggleImperatif(${i})" title="Marquer fait">✓</div>`;
+    // Drag & drop
+    div.addEventListener("dragover", e => { e.preventDefault(); div.classList.add("drag-over"); });
+    div.addEventListener("dragleave", () => div.classList.remove("drag-over"));
+    div.addEventListener("drop", e => {
+      e.preventDefault();
+      div.classList.remove("drag-over");
+      if (draggedTask?.text) {
+        const input = document.getElementById("imp-input-" + i);
+        input.value = draggedTask.text;
+        saveImperatifs();
+        div.classList.add("filled");
+        showNotif("🎯 Impératif A" + (i+1) + " défini !");
+      }
+    });
+    list.appendChild(div);
   }
 }
 
@@ -1773,6 +1791,7 @@ async function loadToDo() {
           ondragstart="onTodoDragStart(event, '${escHtml(text).replace(/'/g,"\\'")}')">
           <span class="drag-handle">⠿</span>
           <span class="todo-item-text" title="${escHtml(t.listName)}">${escHtml(text)}</span>
+          <button class="todo-item-imperatif" title="Assigner comme impératif A1/A2/A3" onclick="assignImperatif(this.closest('[data-text]').dataset.text)" style="font-size:12px;cursor:pointer;opacity:0;transition:opacity 0.2s;background:none;border:none;color:var(--accent);">🎯</button>
           <button class="todo-item-pomo" title="Définir comme tâche Pomodoro" onclick="setPomoTask('${escHtml(text).replace(/'/g,"\\'")}')">🍅</button>
         </div>`;
       }).join("") + `</div>`;
@@ -1793,6 +1812,26 @@ function setPomoTask(text) {
   el.textContent = text;
   el.classList.add("has-task");
   showNotif("🍅 Tâche définie pour le Pomodoro");
+}
+
+function assignImperatif(text) {
+  // Trouve le premier impératif vide
+  for (let i = 0; i < 3; i++) {
+    const input = document.getElementById("imp-input-" + i);
+    if (input && !input.value.trim()) {
+      input.value = text;
+      saveImperatifs();
+      document.getElementById("imp-item-" + i).classList.add("filled");
+      showNotif("🎯 Assigné comme impératif A" + (i+1) + " !");
+      return;
+    }
+  }
+  // Tous remplis : demander lequel remplacer
+  openModal("Remplacer quel impératif ?", text, (t) => {
+    // Remplace A1 par défaut
+    const input = document.getElementById("imp-input-0");
+    if (input) { input.value = t; saveImperatifs(); showNotif("🎯 Impératif A1 remplacé !"); }
+  });
 }
 
 function showTaskPicker() {
