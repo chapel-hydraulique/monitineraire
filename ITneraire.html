@@ -1302,8 +1302,8 @@ function loadSavedState() {
   });
   updateAProgress();
 
-  // Eisenhower
-  const eisen = loadLocal("eisenhower", { q1:[], q2:[], q3:[], q4:[] });
+  // Eisenhower — chargement persistant (indépendant du jour)
+  const eisen = loadEisenhowerPersist();
   ["q1","q2","q3","q4"].forEach(q => {
     (eisen[q] || []).forEach(t => addEisenTaskDirect(q, t.text, t.id, false));
   });
@@ -1611,7 +1611,7 @@ function addEisenTaskDirect(q, text, id = null, save = true) {
   div.dataset.id = taskId;
   div.dataset.q = q;
   div.dataset.text = text;
-  div.innerHTML = `<span class="eisen-task-text">${escHtml(text)}</span><span class="eisen-task-del" onclick="removeEisenTask('${taskId}','${q}')">×</span>`;
+  div.innerHTML = `<span class="eisen-task-done-btn" onclick="doneEisenTask('${taskId}','${q}')" title="Marquer comme fait" style="font-size:12px;cursor:pointer;opacity:0.5;transition:opacity 0.2s;flex-shrink:0;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">✓</span><span class="eisen-task-text">${escHtml(text)}</span><span class="eisen-task-del" onclick="removeEisenTask('${taskId}','${q}')">×</span>`;
 
   div.addEventListener("dragstart", e => {
     draggedTask = { id: taskId, text, q };
@@ -1629,6 +1629,17 @@ function removeEisenTask(id, q) {
   const list = document.getElementById(q + "-list");
   const el = list?.querySelector(`[data-id="${id}"]`);
   if (el) { el.remove(); saveEisenhower(); }
+}
+
+function doneEisenTask(id, q) {
+  const list = document.getElementById(q + "-list");
+  const el = list?.querySelector(`[data-id="${id}"]`);
+  if (!el) return;
+  // Animation de completion
+  el.style.transition = "all 0.4s";
+  el.style.opacity = "0";
+  el.style.transform = "translateX(20px)";
+  setTimeout(() => { el.remove(); saveEisenhower(); showNotif("✅ Tâche terminée !"); }, 400);
 }
 
 function onDragOver(e) {
@@ -1659,7 +1670,15 @@ function saveEisenhower() {
       id: el.dataset.id, text: el.dataset.text
     }));
   });
-  saveLocal("eisenhower", data);
+  // Sauvegarde persistante (sans date) pour la matrice
+  try { localStorage.setItem("mit_eisenhower_persist", JSON.stringify(data)); } catch(e) {}
+}
+
+function loadEisenhowerPersist() {
+  try {
+    const v = localStorage.getItem("mit_eisenhower_persist");
+    return v ? JSON.parse(v) : { q1:[], q2:[], q3:[], q4:[] };
+  } catch(e) { return { q1:[], q2:[], q3:[], q4:[] }; }
 }
 
 // ════════════════════════════════════════════════════════════════
