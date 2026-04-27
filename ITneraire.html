@@ -659,6 +659,8 @@
   }
   .todo-item:hover .todo-item-pomo { opacity: 1; }
   .todo-item:hover .todo-item-imperatif { opacity: 1 !important; }
+  .todo-item.important { border-left: 2px solid #f7c94f; }
+  .todo-importance-star { font-size: 13px; flex-shrink: 0; }
   .in-matrix-badge {
     font-size: 9px; font-family: var(--font-mono);
     background: var(--accent2); color: #fff;
@@ -1857,11 +1859,17 @@ async function loadToDo() {
     let allTasks = [];
     for (const list of lists.value.slice(0, 5)) {
       try {
-        const tasks = await graphGet(`/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=20`);
+        const tasks = await graphGet(`/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$select=title,status,importance,dueDateTime,body&$top=20`);
         tasks.value?.forEach(t => allTasks.push({ ...t, listName: list.displayName, listId: list.id }));
       } catch(e) {}
     }
 
+    // Trier : importantes en premier, puis par ordre d'arrivée
+    allTasks.sort((a, b) => {
+      if (a.importance === 'high' && b.importance !== 'high') return -1;
+      if (b.importance === 'high' && a.importance !== 'high') return 1;
+      return 0;
+    });
     todoTasks = allTasks;
 
     if (!allTasks.length) {
@@ -1872,13 +1880,16 @@ async function loadToDo() {
     el.innerHTML = `<div class="todo-list">` +
       allTasks.slice(0, 20).map(t => {
         const text = t.title || "(Sans titre)";
-        return `<div class="todo-item" draggable="true"
+        const st = escHtml(text).replace(/'/g,"\\'");
+        const isImportant = t.importance === 'high';
+        return `<div class="todo-item${isImportant ? ' important' : ''}" draggable="true"
           data-id="${t.id}" data-text="${escHtml(text).replace(/"/g,'&quot;')}"
-          ondragstart="onTodoDragStart(event, '${escHtml(text).replace(/'/g,"\\'")}')">
+          ondragstart="onTodoDragStart(event, '${st}')">
           <span class="drag-handle">⠿</span>
+          ${isImportant ? '<span class="todo-importance-star" title="Important">⭐</span>' : ''}
           <span class="todo-item-text" title="${escHtml(t.listName)}">${escHtml(text)}</span>
           <button class="todo-item-imperatif" title="Assigner comme impératif A1/A2/A3" onclick="assignImperatif(this.closest('[data-text]').dataset.text)" style="font-size:12px;cursor:pointer;opacity:0;transition:opacity 0.2s;background:none;border:none;color:var(--accent);">🎯</button>
-          <button class="todo-item-pomo" title="Définir comme tâche Pomodoro" onclick="setPomoTask('${escHtml(text).replace(/'/g,"\\'")}')">🍅</button>
+          <button class="todo-item-pomo" title="Définir comme tâche Pomodoro" onclick="setPomoTask('${st}')">🍅</button>
         </div>`;
       }).join("") + `</div>`;
   } catch(e) {
