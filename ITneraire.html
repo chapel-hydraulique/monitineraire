@@ -1859,7 +1859,7 @@ async function loadToDo() {
     let allTasks = [];
     for (const list of lists.value.slice(0, 5)) {
       try {
-        const tasks = await graphGet(`/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$select=title,status,importance,dueDateTime,body&$top=20`);
+        const tasks = await graphGet(`/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=20`);
         tasks.value?.forEach(t => allTasks.push({ ...t, listName: list.displayName, listId: list.id }));
       } catch(e) {}
     }
