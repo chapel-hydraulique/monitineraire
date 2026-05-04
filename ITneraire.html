@@ -209,12 +209,12 @@
 
   #main-app.active {
     display: grid;
-    grid-template-columns: 320px 1fr 280px;
-    grid-template-rows: auto auto 1fr;
+    grid-template-columns: 290px 1fr 1fr 260px;
+    grid-template-rows: auto 1fr auto;
     grid-template-areas:
-      "pomodoro  trois-a   agenda"
-      "pomodoro  eisenhower agenda"
-      "emails    eisenhower todo-panel";
+      "pomodoro  trois-a    agenda     assigned"
+      "pomodoro  eisenhower agenda     assigned"
+      "emails    eisenhower todo-panel assigned";
   }
 
   /* ── CARD BASE ── */
@@ -634,6 +634,26 @@
 
   /* ── TODO PANEL ── */
   .todo-card { grid-area: todo-panel; }
+  .assigned-card { grid-area: assigned; }
+  .assigned-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent2);
+    font-size: 12px;
+    transition: all 0.2s;
+    cursor: grab;
+  }
+  .assigned-item:hover { border-color: var(--accent2); background: var(--surface3); }
+  .assigned-item.important { border-left-color: #f7c94f; }
+  .assigned-item-body { flex: 1; min-width: 0; }
+  .assigned-item-title { font-weight: 500; margin-bottom: 2px; }
+  .assigned-item-list { font-size: 10px; color: #9aa0bc; font-family: var(--font-mono); }
+  .assigned-item-btns { display: flex; flex-direction: column; gap: 4px; opacity: 0; transition: opacity 0.2s; }
+  .assigned-item:hover .assigned-item-btns { opacity: 1; }
+  .assigned-item-btn { background: none; border: none; cursor: pointer; font-size: 12px; padding: 0; }
 
   .todo-list { display: flex; flex-direction: column; gap: 6px; }
 
@@ -779,15 +799,28 @@
   #setup-client-id::placeholder { color: #b0b8d0 !important; font-family: var(--font-mono); }
 
   /* ── RESPONSIVE ── */
-  @media (max-width: 1200px) {
+  @media (max-width: 1400px) {
     #main-app.active {
-      grid-template-columns: 280px 1fr;
+      grid-template-columns: 280px 1fr 260px;
       grid-template-rows: auto auto auto auto;
+      grid-template-areas:
+        "pomodoro trois-a   assigned"
+        "pomodoro eisenhower assigned"
+        "emails   eisenhower agenda"
+        "emails   todo-panel agenda";
+    }
+  }
+
+  @media (max-width: 1000px) {
+    #main-app.active {
+      grid-template-columns: 260px 1fr;
+      grid-template-rows: auto auto auto auto auto;
       grid-template-areas:
         "pomodoro trois-a"
         "pomodoro eisenhower"
-        "emails eisenhower"
-        "agenda todo-panel";
+        "emails   eisenhower"
+        "agenda   assigned"
+        "agenda   todo-panel";
     }
   }
 
@@ -798,6 +831,7 @@
         "trois-a"
         "pomodoro"
         "eisenhower"
+        "assigned"
         "agenda"
         "emails"
         "todo-panel";
@@ -1107,6 +1141,17 @@
       </div>
     </div>
 
+    <!-- ── AFFECTÉES À MOI ── -->
+    <div class="card assigned-card">
+      <div class="card-header">
+        <div class="card-title">👤 Affectées à moi</div>
+        <button class="sync-btn" onclick="loadAssigned()" style="padding:4px 8px; font-size:11px;">↻</button>
+      </div>
+      <div id="assigned-content">
+        <div class="loading-row"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>Chargement…</span></div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -1147,7 +1192,7 @@ function buildMsalConfig(clientId) {
   };
 }
 
-const SCOPES = ["User.Read","Tasks.ReadWrite","Mail.Read","Calendars.Read"];
+const SCOPES = ["User.Read","Tasks.ReadWrite","Tasks.ReadWrite.Shared","Mail.Read","Calendars.Read"];
 
 // ════════════════════════════════════════════════════════════════
 //  MSAL
@@ -1946,8 +1991,73 @@ function showTaskPicker() {
 // ════════════════════════════════════════════════════════════════
 //  SYNC ALL
 // ════════════════════════════════════════════════════════════════
+async function loadAssigned() {
+  const el = document.getElementById("assigned-content");
+  el.innerHTML = loadingHTML();
+  try {
+    // Récupère les tâches via le smart list "assignedToMe"
+    const data = await graphGet(`/me/todo/lists/tasks?$filter=status ne 'completed'&$top=50`);
+    let tasks = (data.value || []);
+
+    // Fallback : cherche dans toutes les listes les tâches avec assignee
+    if (!tasks.length) {
+      const lists = await graphGet(`/me/todo/lists?$top=20`);
+      let all = [];
+      for (const list of lists.value || []) {
+        try {
+          const t = await graphGet(`/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=50`);
+          (t.value || []).forEach(task => {
+            if (task.hasAttachments || task.isReminderOn || task.assignedTo) {
+              all.push({ ...task, listName: list.displayName });
+            }
+          });
+        } catch(e) {}
+      }
+      tasks = all;
+    }
+
+    if (!tasks.length) {
+      el.innerHTML = `<div class="empty-state">✅ Aucune tâche affectée</div>`;
+      return;
+    }
+
+    // Tri : importantes en premier
+    tasks.sort((a,b) => (a.importance==='high'?-1:0) - (b.importance==='high'?-1:0));
+
+    el.innerHTML = `<div style="display:flex; flex-direction:column; gap:6px;">` +
+      tasks.slice(0,20).map(t => {
+        const text = t.title || "(Sans titre)";
+        const st = escHtml(text).replace(/'/g,"\'");
+        const isImportant = t.importance === 'high';
+        const listName = t.listName || "";
+        const due = t.dueDateTime ? new Date(t.dueDateTime.dateTime).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}) : "";
+        return `<div class="assigned-item${isImportant?' important':''}" draggable="true"
+          data-text="${escHtml(text)}"
+          ondragstart="draggedTask={id:'assigned_'+Date.now(),text:this.dataset.text,q:null}; event.dataTransfer.effectAllowed='move';">
+          ${isImportant ? '<span style="font-size:12px;flex-shrink:0;">⭐</span>' : ''}
+          <div class="assigned-item-body">
+            <div class="assigned-item-title">${escHtml(text)}</div>
+            <div class="assigned-item-list">${escHtml(listName)}${due ? ' · 📅 '+due : ''}</div>
+          </div>
+          <div class="assigned-item-btns">
+            <button class="assigned-item-btn" title="Assigner comme impératif" onclick="assignImperatif('${st}')">🎯</button>
+            <button class="assigned-item-btn" title="Pomodoro" onclick="setPomoTask('${st}')">🍅</button>
+          </div>
+        </div>`;
+      }).join("") + `</div>`;
+  } catch(e) {
+    // Fallback : utilise /me/tasks (endpoint alternatif)
+    try {
+      const data2 = await graphGet(`/me/outlook/tasks?$filter=status ne 'completed'&$top=20`);
+      el.innerHTML = `<div class="empty-state">ℹ️ ${(data2.value||[]).length} tâches via Outlook Tasks</div>`;
+    } catch(e2) {
+      el.innerHTML = `<div class="empty-state">⚠️ Erreur<br><small>${e.message}</small></div>`;
+    }
+  }
+}
+
 async function loadAllData() {
-  await Promise.allSettled([loadCalendar(), loadFlaggedEmails(), loadToDo()]);
+  await Promise.allSettled([loadCalendar(), loadFlaggedEmails(), loadToDo(), loadAssigned()]);
   setTimeout(refreshMatrixBadges, 500);
 }
 
