@@ -1995,25 +1995,30 @@ async function loadAssigned() {
   const el = document.getElementById("assigned-content");
   el.innerHTML = loadingHTML();
   try {
-    // Récupère les tâches via le smart list "assignedToMe"
-    const data = await graphGet(`/me/todo/lists/tasks?$filter=status ne 'completed'&$top=50`);
-    let tasks = (data.value || []);
+    // Cherche la liste "Affectées à moi" ou "Assigned to me" dans To Do
+    const lists = await graphGet(`/me/todo/lists?$top=20`);
+    const assignedList = (lists.value || []).find(l =>
+      l.displayName.toLowerCase().includes("affect") ||
+      l.displayName.toLowerCase().includes("assign") ||
+      l.wellknownListName === "assignedToMe"
+    );
 
-    // Fallback : cherche dans toutes les listes les tâches avec assignee
-    if (!tasks.length) {
-      const lists = await graphGet(`/me/todo/lists?$top=20`);
-      let all = [];
-      for (const list of lists.value || []) {
+    let tasks = [];
+    if (assignedList) {
+      const data = await graphGet(`/me/todo/lists/${assignedList.id}/tasks?$top=50`);
+      tasks = (data.value || []).filter(t => t.status !== 'completed');
+    } else {
+      // Fallback : parcourt toutes les listes et filtre côté client
+      for (const list of (lists.value || []).slice(0,6)) {
         try {
-          const t = await graphGet(`/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=50`);
-          (t.value || []).forEach(task => {
-            if (task.hasAttachments || task.isReminderOn || task.assignedTo) {
-              all.push({ ...task, listName: list.displayName });
-            }
-          });
+          const data = await graphGet(`/me/todo/lists/${list.id}/tasks?$top=30`);
+          (data.value || [])
+            .filter(t => t.status !== 'completed')
+            .forEach(t => tasks.push({ ...t, listName: list.displayName }));
         } catch(e) {}
       }
-      tasks = all;
+      // Garde uniquement celles avec un createdBy différent (affectées)
+      // ou toutes si pas de moyen de distinguer
     }
 
     if (!tasks.length) {
@@ -2021,16 +2026,17 @@ async function loadAssigned() {
       return;
     }
 
-    // Tri : importantes en premier
-    tasks.sort((a,b) => (a.importance==='high'?-1:0) - (b.importance==='high'?-1:0));
+    tasks.sort((a,b) => (b.importance==='high'?1:0) - (a.importance==='high'?1:0));
 
     el.innerHTML = `<div style="display:flex; flex-direction:column; gap:6px;">` +
       tasks.slice(0,20).map(t => {
         const text = t.title || "(Sans titre)";
         const st = escHtml(text).replace(/'/g,"\'");
         const isImportant = t.importance === 'high';
-        const listName = t.listName || "";
-        const due = t.dueDateTime ? new Date(t.dueDateTime.dateTime).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}) : "";
+        const listName = t.listName || assignedList?.displayName || "";
+        const due = t.dueDateTime?.dateTime
+          ? new Date(t.dueDateTime.dateTime + 'Z').toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"})
+          : "";
         return `<div class="assigned-item${isImportant?' important':''}" draggable="true"
           data-text="${escHtml(text)}"
           ondragstart="draggedTask={id:'assigned_'+Date.now(),text:this.dataset.text,q:null}; event.dataTransfer.effectAllowed='move';">
@@ -2046,13 +2052,7 @@ async function loadAssigned() {
         </div>`;
       }).join("") + `</div>`;
   } catch(e) {
-    // Fallback : utilise /me/tasks (endpoint alternatif)
-    try {
-      const data2 = await graphGet(`/me/outlook/tasks?$filter=status ne 'completed'&$top=20`);
-      el.innerHTML = `<div class="empty-state">ℹ️ ${(data2.value||[]).length} tâches via Outlook Tasks</div>`;
-    } catch(e2) {
-      el.innerHTML = `<div class="empty-state">⚠️ Erreur<br><small>${e.message}</small></div>`;
-    }
+    el.innerHTML = `<div class="empty-state">⚠️ Erreur<br><small>${e.message}</small></div>`;
   }
 }
 
