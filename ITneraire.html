@@ -679,6 +679,20 @@
   }
   .todo-item:hover .todo-item-pomo { opacity: 1; }
   .todo-item:hover .todo-item-imperatif { opacity: 1 !important; }
+  .todo-item-hours {
+    display: flex; align-items: center; gap: 3px;
+    opacity: 0; transition: opacity 0.2s;
+    flex-shrink: 0;
+  }
+  .todo-item:hover .todo-item-hours { opacity: 1; }
+  .todo-item-hours.has-value { opacity: 1; }
+  .todo-item-hours input {
+    width: 36px; background: var(--surface3); border: 1px solid var(--border);
+    border-radius: 4px; color: var(--success); font-family: var(--font-mono);
+    font-size: 11px; padding: 2px 4px; text-align: center; outline: none;
+  }
+  .todo-item-hours input:focus { border-color: var(--success); }
+  .todo-item-hours label { font-size: 10px; color: #9aa0bc; font-family: var(--font-mono); }
   .todo-item.important { border-left: 2px solid #f7c94f; }
   .todo-importance-star { font-size: 13px; flex-shrink: 0; }
   .in-matrix-badge {
@@ -853,6 +867,14 @@
         <path d="M8 16H3v5"/>
       </svg>
       Synchroniser
+    </button>
+    <button class="sync-btn" id="export-btn" onclick="exportTasksToExcel()" title="Exporter les tâches To Do en Excel">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7,10 12,15 17,10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Export Excel
     </button>
     <div class="topbar-sep"></div>
     <div class="topbar-date" id="top-date"></div>
@@ -1927,12 +1949,20 @@ async function loadToDo() {
         const text = t.title || "(Sans titre)";
         const st = escHtml(text).replace(/'/g,"\\'");
         const isImportant = t.importance === 'high';
+        const savedHours = loadTaskHours(t.id);
+        const hasHours = savedHours !== "";
         return `<div class="todo-item${isImportant ? ' important' : ''}" draggable="true"
           data-id="${t.id}" data-text="${escHtml(text).replace(/"/g,'&quot;')}"
           ondragstart="onTodoDragStart(event, '${st}')">
           <span class="drag-handle">⠿</span>
           ${isImportant ? '<span class="todo-importance-star" title="Important">⭐</span>' : ''}
           <span class="todo-item-text" title="${escHtml(t.listName)}">${escHtml(text)}</span>
+          <div class="todo-item-hours${hasHours ? ' has-value' : ''}" title="Temps passé (heures)">
+            <input type="number" min="0" max="999" step="0.5" value="${savedHours}" placeholder="0"
+              onclick="event.stopPropagation()"
+              onchange="saveTaskHours('${t.id}', this.value); this.closest('.todo-item-hours').classList.toggle('has-value', this.value !== '')">
+            <label>h</label>
+          </div>
           <button class="todo-item-imperatif" title="Assigner comme impératif A1/A2/A3" onclick="assignImperatif(this.closest('[data-text]').dataset.text)" style="font-size:12px;cursor:pointer;opacity:0;transition:opacity 0.2s;background:none;border:none;color:var(--accent);">🎯</button>
           <button class="todo-item-pomo" title="Définir comme tâche Pomodoro" onclick="setPomoTask('${st}')">🍅</button>
         </div>`;
@@ -2160,6 +2190,129 @@ function escHtml(s) {
 
 function loadingHTML() {
   return `<div class="loading-row"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>Chargement…</span></div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  HEURES PAR TÂCHE
+// ════════════════════════════════════════════════════════════════
+function saveTaskHours(taskId, hours) {
+  try {
+    const key = "mit_hours";
+    const all = JSON.parse(localStorage.getItem(key) || "{}");
+    if (hours === "" || hours === null) delete all[taskId];
+    else all[taskId] = parseFloat(hours);
+    localStorage.setItem(key, JSON.stringify(all));
+  } catch(e) {}
+}
+
+function loadTaskHours(taskId) {
+  try {
+    const all = JSON.parse(localStorage.getItem("mit_hours") || "{}");
+    return all[taskId] !== undefined ? all[taskId] : "";
+  } catch(e) { return ""; }
+}
+
+function getAllTaskHours() {
+  try { return JSON.parse(localStorage.getItem("mit_hours") || "{}"); }
+  catch(e) { return {}; }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  EXPORT EXCEL
+// ════════════════════════════════════════════════════════════════
+async function exportTasksToExcel() {
+  const btn = document.getElementById("export-btn");
+  btn.textContent = "⏳ Export…";
+  btn.disabled = true;
+
+  try {
+    showNotif("📊 Collecte des tâches en cours…");
+
+    const hoursMap = getAllTaskHours();
+    const lists = await graphGet(`/me/todo/lists?$top=20`);
+    let enCours = [], terminees = [];
+
+    for (const list of (lists.value || [])) {
+      try {
+        const data = await graphGet(`/me/todo/lists/${list.id}/tasks?$top=100`);
+        (data.value || []).forEach(t => {
+          const hours = hoursMap[t.id] !== undefined ? hoursMap[t.id] : "";
+          const dateCreation = t.createdDateTime ? new Date(t.createdDateTime).toLocaleDateString("fr-FR") : "";
+          const dateRealisation = t.completedDateTime
+            ? new Date(t.completedDateTime.dateTime || t.completedDateTime).toLocaleDateString("fr-FR") : "";
+          const importance = t.importance === 'high' ? 'Haute' : t.importance === 'low' ? 'Basse' : 'Normale';
+          const row = {
+            "Liste": list.displayName,
+            "Titre": t.title || "",
+            "Importance": importance,
+            "Date création": dateCreation,
+            "Date réalisation": dateRealisation,
+            "Temps (h)": hours
+          };
+          if (t.status === 'completed') terminees.push(row);
+          else enCours.push(row);
+        });
+      } catch(e) {}
+    }
+
+    const total = enCours.length + terminees.length;
+    if (!total) { showNotif("⚠️ Aucune tâche trouvée"); return; }
+    showNotif(`📊 ${total} tâches — génération Excel…`);
+
+    // Charge SheetJS dynamiquement
+    await new Promise((res, rej) => {
+      if (window.XLSX) return res();
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+
+    const wb = XLSX.utils.book_new();
+    const today = new Date().toLocaleDateString("fr-FR");
+    const todayFile = new Date().toISOString().slice(0,10);
+    const totalH = Object.values(hoursMap).reduce((a,b) => a + (parseFloat(b)||0), 0);
+
+    // ── Onglet Synthèse ──
+    const synthData = [
+      ["Reporting d'activité — MonITinéraire"],
+      ["Généré le", today],
+      ["Collaborateur", "Eric Baiamonte"],
+      [],
+      ["SYNTHÈSE", ""],
+      ["Total tâches", total],
+      ["Tâches en cours", enCours.length],
+      ["Tâches terminées", terminees.length],
+      ["Taux de complétion", total > 0 ? Math.round(terminees.length/total*100)+"%" : "0%"],
+      ["Temps total saisi (h)", totalH],
+    ];
+    const wsSynth = XLSX.utils.aoa_to_sheet(synthData);
+    wsSynth['!cols'] = [{wch:30},{wch:25}];
+    XLSX.utils.book_append_sheet(wb, wsSynth, "Synthèse");
+
+    // ── Onglet En cours ──
+    if (enCours.length) {
+      const wsEnCours = XLSX.utils.json_to_sheet(enCours);
+      wsEnCours['!cols'] = [{wch:20},{wch:45},{wch:12},{wch:14},{wch:16},{wch:10}];
+      XLSX.utils.book_append_sheet(wb, wsEnCours, "En cours");
+    }
+
+    // ── Onglet Terminées ──
+    if (terminees.length) {
+      const wsTerm = XLSX.utils.json_to_sheet(terminees);
+      wsTerm['!cols'] = [{wch:20},{wch:45},{wch:12},{wch:14},{wch:16},{wch:10}];
+      XLSX.utils.book_append_sheet(wb, wsTerm, "Terminées");
+    }
+
+    XLSX.writeFile(wb, `MonITineraire_Reporting_${todayFile}.xlsx`);
+    showNotif(`✅ Excel téléchargé — ${total} tâches`);
+
+  } catch(e) {
+    showNotif("❌ Erreur export : " + e.message);
+  } finally {
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export Excel`;
+    btn.disabled = false;
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
