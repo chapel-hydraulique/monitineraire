@@ -2215,7 +2215,7 @@ async function openTaskDetail(taskId, listId, title) {
   document.getElementById("task-detail-overlay").classList.add("active");
 
   try {
-    const task = await graphGet(`/me/todo/lists/${listId}/tasks/${taskId}`);
+    const task = await graphGet(`/me/todo/lists/${listId}/tasks/${taskId}?$select=title,body,dueDateTime,importance,createdDateTime,status,lastModifiedDateTime`);
 
     // Meta tags
     const meta = document.getElementById("td-meta");
@@ -2256,13 +2256,28 @@ async function openTaskDetail(taskId, listId, title) {
     // Corps du message
     const body = document.getElementById("td-body");
     const bodyContent = task.body?.content || "";
+    const bodyType = task.body?.contentType || "text";
 
-    // Nettoie le HTML si présent
-    const tmp = document.createElement("div");
-    tmp.innerHTML = bodyContent;
-    const cleanText = (tmp.textContent || tmp.innerText || "").trim();
+    let cleanText = "";
+    if (bodyType === "html" || bodyContent.includes("<")) {
+      // Parse HTML proprement
+      const tmp = document.createElement("div");
+      tmp.innerHTML = bodyContent;
+      // Supprime les scripts et styles
+      tmp.querySelectorAll("script, style, head").forEach(el => el.remove());
+      // Remplace les <br> et <p> par des sauts de ligne
+      tmp.querySelectorAll("br").forEach(el => el.replaceWith("\n"));
+      tmp.querySelectorAll("p, div").forEach(el => {
+        el.insertAdjacentText("afterend", "\n");
+      });
+      cleanText = (tmp.textContent || tmp.innerText || "")
+        .replace(/\n{3,}/g, "\n\n")  // max 2 sauts de ligne
+        .trim();
+    } else {
+      cleanText = bodyContent.trim();
+    }
 
-    if (cleanText && cleanText !== title) {
+    if (cleanText && cleanText.toLowerCase() !== title.toLowerCase()) {
       body.innerHTML = `
         <div class="task-detail-section-label">Corps du message</div>
         <div class="task-detail-content">${escHtml(cleanText)}</div>`;
