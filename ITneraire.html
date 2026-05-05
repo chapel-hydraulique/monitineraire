@@ -210,10 +210,10 @@
   #main-app.active {
     display: grid;
     grid-template-columns: 290px 1fr 1fr 260px;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto auto 1fr;
     grid-template-areas:
       "pomodoro  trois-a    agenda     assigned"
-      "pomodoro  eisenhower agenda     assigned"
+      "pomodoro  eisenhower todo-panel assigned"
       "emails    eisenhower todo-panel assigned";
   }
 
@@ -565,7 +565,7 @@
   .eisen-add-btn:hover { color: #c8cfe8; }
 
   /* ── AGENDA ── */
-  .agenda-card { grid-area: agenda; }
+  .agenda-card { grid-area: agenda; max-height: 320px; overflow-y: auto; align-self: start; }
 
   .agenda-list { display: flex; flex-direction: column; gap: 8px; }
 
@@ -654,6 +654,7 @@
   .assigned-item-btns { display: flex; flex-direction: column; gap: 4px; opacity: 0; transition: opacity 0.2s; }
   .assigned-item:hover .assigned-item-btns { opacity: 1; }
   .assigned-item-btn { background: none; border: none; cursor: pointer; font-size: 12px; padding: 0; }
+  .assigned-item .todo-item-hours { opacity: 1 !important; display: flex !important; }
 
   .todo-list { display: flex; flex-direction: column; gap: 6px; }
 
@@ -2179,7 +2180,7 @@ async function loadAssigned() {
           <div class="assigned-item-body">
             <div class="assigned-item-title">${escHtml(text)}</div>
             <div class="assigned-item-list">${escHtml(listName)}${due ? ' · 📅 '+due : ''}</div>
-            <div class="todo-item-hours${hasHoursA ? ' has-value' : ''}" style="margin-top:4px;" title="Temps passé (heures)">
+            <div class="todo-item-hours has-value" style="margin-top:4px; opacity:1 !important;" title="Temps passé (heures)">
               <input type="number" min="0" max="999" step="0.25" value="${savedHoursA}" placeholder="0"
                 onclick="event.stopPropagation()"
                 onchange="saveTaskHours('${t.id || text}', this.value); this.closest('.todo-item-hours').classList.toggle('has-value', this.value !== '')">
