@@ -687,13 +687,24 @@
   .todo-item:hover .todo-item-hours { opacity: 1; }
   .todo-item-hours.has-value { opacity: 1; }
   .todo-item-hours input {
-    width: 36px; background: var(--surface3); border: 1px solid var(--border);
+    width: 52px; background: var(--surface3); border: 1px solid var(--border);
     border-radius: 4px; color: var(--success); font-family: var(--font-mono);
-    font-size: 11px; padding: 2px 4px; text-align: center; outline: none;
+    font-size: 11px; padding: 2px 6px; text-align: center; outline: none;
   }
   .todo-item-hours input:focus { border-color: var(--success); }
   .todo-item-hours label { font-size: 10px; color: #9aa0bc; font-family: var(--font-mono); }
   .todo-item.important { border-left: 2px solid #f7c94f; }
+  .todo-item.completed { opacity: 0.45; }
+  .todo-item.completed .todo-item-text { text-decoration: line-through; color: #9aa0bc; }
+  .todo-item-check {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--border); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; flex-shrink: 0; transition: all 0.2s;
+    background: none; color: #fff;
+  }
+  .todo-item-check:hover { border-color: var(--success); background: #34c97e20; }
+  .todo-item.completed .todo-item-check { background: var(--success); border-color: var(--success); }
   .todo-importance-star { font-size: 13px; flex-shrink: 0; }
   .in-matrix-badge {
     font-size: 9px; font-family: var(--font-mono);
@@ -1686,10 +1697,14 @@ function addEisenTask(q) {
   });
 }
 
-function addEisenTaskDirect(q, text, id = null, save = true) {
+function addEisenTaskDirect(q, text, id = null, save = true, todoId = null, listId = null) {
   const taskId = id || ("t_" + Date.now() + "_" + Math.random().toString(36).slice(2));
   const list = document.getElementById(q + "-list");
   if (!list) return;
+
+  // Also capture from draggedTask if available
+  if (!todoId && draggedTask?.todoId) todoId = draggedTask.todoId;
+  if (!listId && draggedTask?.listId) listId = draggedTask.listId;
 
   const div = document.createElement("div");
   div.className = "eisen-task";
@@ -1697,7 +1712,9 @@ function addEisenTaskDirect(q, text, id = null, save = true) {
   div.dataset.id = taskId;
   div.dataset.q = q;
   div.dataset.text = text;
-  div.innerHTML = `<span class="eisen-task-done-btn" onclick="doneEisenTask('${taskId}','${q}')" title="Marquer comme fait" style="font-size:12px;cursor:pointer;opacity:0.5;transition:opacity 0.2s;flex-shrink:0;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">✓</span><span class="eisen-task-text">${escHtml(text)}</span><span class="eisen-task-del" onclick="removeEisenTask('${taskId}','${q}')">×</span>`;
+  if (todoId) div.dataset.todoId = todoId;
+  if (listId) div.dataset.listId = listId;
+  div.innerHTML = `<span class="eisen-task-done-btn" onclick="doneEisenTask('${taskId}','${q}',this)" title="Marquer comme fait" style="font-size:12px;cursor:pointer;opacity:0.5;transition:opacity 0.2s;flex-shrink:0;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">✓</span><span class="eisen-task-text">${escHtml(text)}</span><span class="eisen-task-del" onclick="removeEisenTask('${taskId}','${q}')">×</span>`;
 
   div.addEventListener("dragstart", e => {
     draggedTask = { id: taskId, text, q };
@@ -1717,15 +1734,36 @@ function removeEisenTask(id, q) {
   if (el) { el.remove(); saveEisenhower(); }
 }
 
-function doneEisenTask(id, q) {
+async function doneEisenTask(id, q, btn) {
   const list = document.getElementById(q + "-list");
   const el = list?.querySelector(`[data-id="${id}"]`);
   if (!el) return;
+
+  // Si la tâche vient de To Do, on la complète aussi dans Graph
+  const todoId = el.dataset.todoId;
+  const listId = el.dataset.listId;
+  if (todoId && listId) {
+    try {
+      const token = await acquireToken();
+      if (token) {
+        await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${todoId}`, {
+          method: "PATCH",
+          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "completed",
+            completedDateTime: { dateTime: new Date().toISOString(), timeZone: "UTC" }
+          })
+        });
+        showNotif("✅ Terminée dans To Do aussi !");
+      }
+    } catch(e) {}
+  }
+
   // Animation de completion
   el.style.transition = "all 0.4s";
   el.style.opacity = "0";
   el.style.transform = "translateX(20px)";
-  setTimeout(() => { el.remove(); saveEisenhower(); showNotif("✅ Tâche terminée !"); }, 400);
+  setTimeout(() => { el.remove(); saveEisenhower(); if(!todoId) showNotif("✅ Tâche terminée !"); }, 400);
 }
 
 function onDragOver(e) {
@@ -1952,13 +1990,13 @@ async function loadToDo() {
         const savedHours = loadTaskHours(t.id);
         const hasHours = savedHours !== "";
         return `<div class="todo-item${isImportant ? ' important' : ''}" draggable="true"
-          data-id="${t.id}" data-text="${escHtml(text).replace(/"/g,'&quot;')}"
+          data-id="${t.id}" data-list-id="${t.listId}" data-text="${escHtml(text).replace(/"/g,'&quot;')}"
           ondragstart="onTodoDragStart(event, '${st}')">
-          <span class="drag-handle">⠿</span>
+          <button class="todo-item-check" onclick="completeTodoItem(this, '${t.id}', '${t.listId}')" title="Marquer comme terminée">✓</button>
           ${isImportant ? '<span class="todo-importance-star" title="Important">⭐</span>' : ''}
           <span class="todo-item-text" title="${escHtml(t.listName)}">${escHtml(text)}</span>
           <div class="todo-item-hours${hasHours ? ' has-value' : ''}" title="Temps passé (heures)">
-            <input type="number" min="0" max="999" step="0.5" value="${savedHours}" placeholder="0"
+            <input type="number" min="0" max="999" step="0.25" value="${savedHours}" placeholder="0"
               onclick="event.stopPropagation()"
               onchange="saveTaskHours('${t.id}', this.value); this.closest('.todo-item-hours').classList.toggle('has-value', this.value !== '')">
             <label>h</label>
@@ -1973,7 +2011,14 @@ async function loadToDo() {
 }
 
 function onTodoDragStart(e, text) {
-  draggedTask = { id: "todo_" + Date.now(), text, q: null };
+  const item = e.currentTarget;
+  draggedTask = {
+    id: "todo_" + Date.now(),
+    text,
+    q: null,
+    todoId: item.dataset.id,
+    listId: item.dataset.listId
+  };
   e.dataTransfer.effectAllowed = "move";
 }
 
@@ -1989,6 +2034,48 @@ function setPomoTask(text) {
   el.textContent = text;
   el.classList.add("has-task");
   showNotif("🍅 Tâche définie pour le Pomodoro");
+}
+
+async function completeTodoItem(btn, taskId, listId) {
+  const item = btn.closest(".todo-item");
+  if (!item || item.classList.contains("completed")) return;
+
+  // Style immédiat
+  item.classList.add("completed");
+  btn.textContent = "✓";
+  showNotif("✅ Marquage en cours…");
+
+  try {
+    const token = await acquireToken();
+    if (!token) throw new Error("Non authentifié");
+
+    const r = await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "completed",
+        completedDateTime: { dateTime: new Date().toISOString(), timeZone: "UTC" }
+      })
+    });
+
+    if (r.ok) {
+      showNotif("✅ Tâche terminée dans To Do !");
+      // Disparaît après 2s
+      setTimeout(() => {
+        item.style.transition = "all 0.4s";
+        item.style.opacity = "0";
+        item.style.maxHeight = "0";
+        item.style.padding = "0";
+        setTimeout(() => item.remove(), 400);
+      }, 2000);
+    } else {
+      item.classList.remove("completed");
+      showNotif("❌ Erreur : " + r.status);
+    }
+  } catch(e) {
+    item.classList.remove("completed");
+    showNotif("❌ Erreur : " + e.message);
+  }
 }
 
 function assignImperatif(text) {
