@@ -2215,7 +2215,7 @@ async function openTaskDetail(taskId, listId, title) {
   document.getElementById("task-detail-overlay").classList.add("active");
 
   try {
-    const task = await graphGet(`/me/todo/lists/${listId}/tasks/${taskId}?$select=title,body,dueDateTime,importance,createdDateTime,status`);
+    const task = await graphGet(`/me/todo/lists/${listId}/tasks/${taskId}`);
 
     // Meta tags
     const meta = document.getElementById("td-meta");
