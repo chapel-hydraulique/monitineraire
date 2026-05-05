@@ -771,6 +771,101 @@
 
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
+  /* ── TASK DETAIL MODAL ── */
+  .task-detail-overlay {
+    position: fixed; inset: 0;
+    background: #000a;
+    display: none; align-items: center; justify-content: center;
+    z-index: 1100;
+    backdrop-filter: blur(6px);
+  }
+  .task-detail-overlay.active { display: flex; }
+
+  .task-detail-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 0;
+    width: 560px;
+    max-width: 95vw;
+    max-height: 80vh;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .task-detail-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+
+  .task-detail-title {
+    font-family: var(--font-head);
+    font-size: 17px;
+    font-weight: 700;
+    flex: 1;
+    line-height: 1.4;
+  }
+
+  .task-detail-close {
+    background: none; border: none; color: var(--text3);
+    font-size: 20px; cursor: pointer; padding: 0;
+    flex-shrink: 0; transition: color 0.2s;
+    line-height: 1;
+  }
+  .task-detail-close:hover { color: var(--text); }
+
+  .task-detail-meta {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .task-detail-tag {
+    font-size: 11px; font-family: var(--font-mono);
+    padding: 3px 10px; border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--text2);
+  }
+  .task-detail-tag.due { border-color: var(--warn); color: var(--warn); }
+  .task-detail-tag.important { border-color: #f7c94f; color: #f7c94f; }
+  .task-detail-tag.list { border-color: var(--accent); color: var(--accent); }
+
+  .task-detail-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+  }
+
+  .task-detail-section-label {
+    font-size: 10px; font-family: var(--font-mono);
+    color: var(--text3); text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 8px;
+  }
+
+  .task-detail-content {
+    font-size: 13px; color: var(--text2);
+    line-height: 1.7;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .task-detail-footer {
+    padding: 14px 24px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 8px; justify-content: flex-end;
+  }
+
+  .task-detail-loading {
+    text-align: center; padding: 40px;
+    color: var(--text3); font-size: 13px;
+  }
+
   .btn { padding: 9px 18px; border-radius: 8px; font-family: var(--font-body); font-size: 13px; cursor: pointer; border: none; transition: all 0.2s; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: #6aa0f9; }
@@ -887,6 +982,14 @@
         <line x1="12" y1="15" x2="12" y2="3"/>
       </svg>
       Export Excel
+    </button>
+    <button class="sync-btn" onclick="importHoursFromJSON()" title="Restaurer les temps depuis un fichier JSON">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7,10 9,15 17,10"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      Restaurer temps
     </button>
     <div class="topbar-sep"></div>
     <div class="topbar-date" id="top-date"></div>
@@ -1197,6 +1300,26 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
       <button class="btn btn-primary" onclick="modalConfirm()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TASK DETAIL MODAL ══ -->
+<div class="task-detail-overlay" id="task-detail-overlay" onclick="if(event.target===this) closeTaskDetail()">
+  <div class="task-detail-modal">
+    <div class="task-detail-header">
+      <div class="task-detail-title" id="td-title">Chargement…</div>
+      <button class="task-detail-close" onclick="closeTaskDetail()">×</button>
+    </div>
+    <div class="task-detail-meta" id="td-meta"></div>
+    <div class="task-detail-body" id="td-body">
+      <div class="task-detail-loading">
+        <div class="loading-row" style="justify-content:center"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>
+      </div>
+    </div>
+    <div class="task-detail-footer">
+      <button class="btn btn-ghost" onclick="closeTaskDetail()">Fermer</button>
+      <button class="btn btn-primary" id="td-complete-btn" onclick="completeTodoFromDetail()">✓ Marquer terminée</button>
     </div>
   </div>
 </div>
@@ -1995,7 +2118,7 @@ async function loadToDo() {
           ondragstart="onTodoDragStart(event, '${st}')">
           <button class="todo-item-check" onclick="completeTodoItem(this, '${t.id}', '${t.listId}')" title="Marquer comme terminée">✓</button>
           ${isImportant ? '<span class="todo-importance-star" title="Important">⭐</span>' : ''}
-          <span class="todo-item-text" title="${escHtml(t.listName)}">${escHtml(text)}</span>
+          <span class="todo-item-text" title="Cliquer pour voir le détail" style="cursor:pointer;" onclick="event.stopPropagation(); openTaskDetail('${t.id}', '${t.listId}', '${st}')">${escHtml(text)}</span>
           <div class="todo-item-hours${hasHours ? ' has-value' : ''}" title="Temps passé (heures)">
             <input type="number" min="0" max="999" step="0.25" value="${savedHours}" placeholder="0"
               onclick="event.stopPropagation()"
@@ -2076,6 +2199,124 @@ async function completeTodoItem(btn, taskId, listId) {
   } catch(e) {
     item.classList.remove("completed");
     showNotif("❌ Erreur : " + e.message);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TASK DETAIL POPUP
+// ════════════════════════════════════════════════════════════════
+let currentDetailTask = null;
+
+async function openTaskDetail(taskId, listId, title) {
+  currentDetailTask = { taskId, listId, title };
+  document.getElementById("td-title").textContent = title;
+  document.getElementById("td-meta").innerHTML = "";
+  document.getElementById("td-body").innerHTML = `<div class="task-detail-loading"><div class="loading-row" style="justify-content:center"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div></div>`;
+  document.getElementById("task-detail-overlay").classList.add("active");
+
+  try {
+    const task = await graphGet(`/me/todo/lists/${listId}/tasks/${taskId}`);
+
+    // Meta tags
+    const meta = document.getElementById("td-meta");
+    meta.innerHTML = "";
+
+    // Liste
+    const listTag = document.createElement("span");
+    listTag.className = "task-detail-tag list";
+    listTag.textContent = "📋 " + (document.querySelector(`.todo-item[data-id="${taskId}"]`)?.title || "To Do");
+    meta.appendChild(listTag);
+
+    // Importance
+    if (task.importance === 'high') {
+      const impTag = document.createElement("span");
+      impTag.className = "task-detail-tag important";
+      impTag.textContent = "⭐ Important";
+      meta.appendChild(impTag);
+    }
+
+    // Date échéance
+    if (task.dueDateTime?.dateTime) {
+      const due = new Date(task.dueDateTime.dateTime + 'Z');
+      const dueTag = document.createElement("span");
+      dueTag.className = "task-detail-tag due";
+      dueTag.textContent = "📅 " + due.toLocaleDateString("fr-FR", {day:"2-digit", month:"long", year:"numeric"});
+      meta.appendChild(dueTag);
+    }
+
+    // Date création
+    if (task.createdDateTime) {
+      const created = new Date(task.createdDateTime);
+      const creTag = document.createElement("span");
+      creTag.className = "task-detail-tag";
+      creTag.textContent = "🕐 Créée le " + created.toLocaleDateString("fr-FR", {day:"2-digit", month:"2-digit", year:"numeric"});
+      meta.appendChild(creTag);
+    }
+
+    // Corps du message
+    const body = document.getElementById("td-body");
+    const bodyContent = task.body?.content || "";
+
+    // Nettoie le HTML si présent
+    const tmp = document.createElement("div");
+    tmp.innerHTML = bodyContent;
+    const cleanText = (tmp.textContent || tmp.innerText || "").trim();
+
+    if (cleanText && cleanText !== title) {
+      body.innerHTML = `
+        <div class="task-detail-section-label">Corps du message</div>
+        <div class="task-detail-content">${escHtml(cleanText)}</div>`;
+    } else {
+      body.innerHTML = `<div class="task-detail-loading" style="color:var(--text3);">Aucun contenu supplémentaire</div>`;
+    }
+
+    // Masque le bouton si déjà terminée
+    const completeBtn = document.getElementById("td-complete-btn");
+    if (task.status === 'completed') {
+      completeBtn.style.display = "none";
+    } else {
+      completeBtn.style.display = "block";
+    }
+
+  } catch(e) {
+    document.getElementById("td-body").innerHTML = `<div class="task-detail-loading">⚠️ Erreur : ${e.message}</div>`;
+  }
+}
+
+function closeTaskDetail() {
+  document.getElementById("task-detail-overlay").classList.remove("active");
+  currentDetailTask = null;
+}
+
+async function completeTodoFromDetail() {
+  if (!currentDetailTask) return;
+  const { taskId, listId } = currentDetailTask;
+  const btn = document.getElementById("td-complete-btn");
+  btn.textContent = "⏳…";
+  btn.disabled = true;
+
+  try {
+    const token = await acquireToken();
+    await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "completed",
+        completedDateTime: { dateTime: new Date().toISOString(), timeZone: "UTC" }
+      })
+    });
+    showNotif("✅ Tâche terminée dans To Do !");
+    closeTaskDetail();
+    // Retire de la liste affichée
+    const item = document.querySelector(`.todo-item[data-id="${taskId}"]`);
+    if (item) {
+      item.classList.add("completed");
+      setTimeout(() => { item.style.opacity="0"; setTimeout(() => item.remove(), 400); }, 1500);
+    }
+  } catch(e) {
+    showNotif("❌ Erreur : " + e.message);
+    btn.textContent = "✓ Marquer terminée";
+    btn.disabled = false;
   }
 }
 
@@ -2291,13 +2532,74 @@ function loadingHTML() {
 // ════════════════════════════════════════════════════════════════
 //  HEURES PAR TÂCHE
 // ════════════════════════════════════════════════════════════════
+
+// Debounce timer pour éviter trop d'appels Graph
+let hoursSaveTimer = null;
+
 function saveTaskHours(taskId, hours) {
   try {
+    // 1. Sauvegarde locale immédiate
     const key = "mit_hours";
     const all = JSON.parse(localStorage.getItem(key) || "{}");
     if (hours === "" || hours === null) delete all[taskId];
     else all[taskId] = parseFloat(hours);
     localStorage.setItem(key, JSON.stringify(all));
+
+    // 2. Sauvegarde dans les notes To Do (debounce 2s)
+    clearTimeout(hoursSaveTimer);
+    hoursSaveTimer = setTimeout(() => saveHoursToToDo(taskId, parseFloat(hours) || 0), 2000);
+
+    // 3. Export JSON automatique (debounce 3s)
+    clearTimeout(window.jsonExportTimer);
+    window.jsonExportTimer = setTimeout(() => autoExportHoursJSON(), 3000);
+
+  } catch(e) {}
+}
+
+async function saveHoursToToDo(taskId, hours) {
+  // Trouve le listId depuis la liste To Do affichée
+  const item = document.querySelector(`.todo-item[data-id="${taskId}"]`);
+  const listId = item?.dataset?.listId;
+  if (!listId) return;
+
+  try {
+    const token = await acquireToken();
+    if (!token) return;
+    await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        body: {
+          contentType: "text",
+          content: `[MonITinéraire] Temps saisi : ${hours}h`
+        }
+      })
+    });
+    showNotif(`💾 ${hours}h sauvegardé dans To Do`);
+  } catch(e) {
+    console.warn("Sauvegarde Graph échouée:", e);
+  }
+}
+
+function autoExportHoursJSON() {
+  try {
+    const all = getAllTaskHours();
+    if (!Object.keys(all).length) return;
+    const data = {
+      exportDate: new Date().toISOString(),
+      user: "ebaiamonte@chapel-hydraulique.com",
+      hours: all
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `MonITineraire_Temps_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showNotif("📥 Sauvegarde JSON téléchargée automatiquement");
   } catch(e) {}
 }
 
@@ -2311,6 +2613,33 @@ function loadTaskHours(taskId) {
 function getAllTaskHours() {
   try { return JSON.parse(localStorage.getItem("mit_hours") || "{}"); }
   catch(e) { return {}; }
+}
+
+// Restauration depuis un fichier JSON de sauvegarde
+function importHoursFromJSON() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json";
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        const hours = data.hours || data;
+        const existing = JSON.parse(localStorage.getItem("mit_hours") || "{}");
+        const merged = { ...existing, ...hours };
+        localStorage.setItem("mit_hours", JSON.stringify(merged));
+        showNotif(`✅ ${Object.keys(hours).length} temps restaurés !`);
+        loadToDo();
+      } catch(err) {
+        showNotif("❌ Fichier JSON invalide");
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
 }
 
 // ════════════════════════════════════════════════════════════════
