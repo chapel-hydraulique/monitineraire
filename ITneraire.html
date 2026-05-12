@@ -1349,7 +1349,7 @@ function buildMsalConfig(clientId) {
   };
 }
 
-const SCOPES = ["User.Read","Tasks.ReadWrite","Tasks.ReadWrite.Shared","Mail.Read","Calendars.Read","Tasks.Read","Group.Read.All"];
+const SCOPES = ["User.Read","Tasks.ReadWrite","Tasks.ReadWrite.Shared","Mail.Read","Mail.ReadWrite","Calendars.Read","Tasks.Read","Group.Read.All"];
 
 // ════════════════════════════════════════════════════════════════
 //  MSAL
@@ -2088,8 +2088,14 @@ async function loadToDo() {
     let allTasks = [];
     for (const list of lists.value.slice(0, 5)) {
       try {
-        const tasks = await graphGet(`/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=20`);
-        tasks.value?.forEach(t => allTasks.push({ ...t, listName: list.displayName, listId: list.id }));
+        // Pagination pour récupérer toutes les tâches (pas seulement les 20 premières)
+        let nextLink = `/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=100`;
+        while (nextLink) {
+          const tasks = await graphGet(nextLink.startsWith('https') ? nextLink.replace('https://graph.microsoft.com/v1.0','') : nextLink);
+          tasks.value?.forEach(t => allTasks.push({ ...t, listName: list.displayName, listId: list.id }));
+          nextLink = tasks['@odata.nextLink'] || null;
+          if (nextLink) nextLink = nextLink.replace('https://graph.microsoft.com/v1.0','');
+        }
       } catch(e) {}
     }
 
@@ -2282,7 +2288,31 @@ async function openTaskDetail(taskId, listId, title) {
         <div class="task-detail-section-label">Corps du message</div>
         <div class="task-detail-content">${escHtml(cleanText)}</div>`;
     } else {
-      body.innerHTML = `<div class="task-detail-loading" style="color:var(--text3);">Aucun contenu supplémentaire</div>`;
+      // Tâche créée depuis un email flaggé — cherche l'email source dans Outlook
+      body.innerHTML = `<div class="task-detail-loading"><div class="loading-row" style="justify-content:center"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span style="font-size:12px;color:var(--text3);">Recherche de l'email source…</span></div></div>`;
+      try {
+        // Recherche l'email par sujet dans la boîte de réception
+        const subjectSearch = title.replace(/^(RE:|TR:|FW:)\s*/i, "").trim().slice(0, 60);
+        const emails = await graphGet(`/me/messages?$search="subject:${encodeURIComponent(subjectSearch)}"&$select=subject,body,from,receivedDateTime&$top=1`);
+        const email = emails.value?.[0];
+        if (email?.body?.content) {
+          const tmp2 = document.createElement("div");
+          tmp2.innerHTML = email.body.content;
+          tmp2.querySelectorAll("script,style,head").forEach(el => el.remove());
+          tmp2.querySelectorAll("br").forEach(el => el.replaceWith("\n"));
+          tmp2.querySelectorAll("p,div").forEach(el => el.insertAdjacentText("afterend","\n"));
+          const emailText = (tmp2.textContent||tmp2.innerText||"").replace(/\n{3,}/g,"\n\n").trim();
+          const from = email.from?.emailAddress?.name || email.from?.emailAddress?.address || "";
+          const date = email.receivedDateTime ? new Date(email.receivedDateTime).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+          body.innerHTML = `
+            <div class="task-detail-section-label">Email de ${escHtml(from)} — ${date}</div>
+            <div class="task-detail-content">${escHtml(emailText)}</div>`;
+        } else {
+          body.innerHTML = `<div class="task-detail-loading" style="color:var(--text3);">Aucun contenu disponible</div>`;
+        }
+      } catch(e2) {
+        body.innerHTML = `<div class="task-detail-loading" style="color:var(--text3);">Aucun contenu disponible</div>`;
+      }
     }
 
     // Masque le bouton si déjà terminée
