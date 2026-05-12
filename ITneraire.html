@@ -2113,7 +2113,7 @@ async function loadToDo() {
     }
 
     el.innerHTML = `<div class="todo-list">` +
-      allTasks.slice(0, 20).map(t => {
+      allTasks.map(t => {
         const text = t.title || "(Sans titre)";
         const st = escHtml(text).replace(/'/g,"\\'");
         const isImportant = t.importance === 'high';
