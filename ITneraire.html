@@ -2079,14 +2079,14 @@ async function loadToDo() {
 
   try {
     // Get all task lists
-    const lists = await graphGet(`/me/todo/lists?$top=20`);
+    const lists = await graphGet(`/me/todo/lists?$top=50`);
     if (!lists.value?.length) {
       el.innerHTML = `<div class="empty-state">📭 Aucune liste To Do</div>`;
       return;
     }
 
     let allTasks = [];
-    for (const list of lists.value.slice(0, 5)) {
+    for (const list of lists.value) {
       try {
         // Pagination pour récupérer toutes les tâches (pas seulement les 20 premières)
         let nextLink = `/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=100`;
@@ -2404,7 +2404,7 @@ async function loadAssigned() {
     const myEmail = (me.mail || me.userPrincipalName || "").toLowerCase();
 
     // Parcourt toutes les listes To Do
-    const lists = await graphGet(`/me/todo/lists?$top=20`);
+    const lists = await graphGet(`/me/todo/lists?$top=50`);
     let tasks = [];
 
     for (const list of (lists.value || [])) {
@@ -2699,7 +2699,7 @@ async function exportTasksToExcel() {
     showNotif("📊 Collecte des tâches en cours…");
 
     const hoursMap = getAllTaskHours();
-    const lists = await graphGet(`/me/todo/lists?$top=20`);
+    const lists = await graphGet(`/me/todo/lists?$top=50`);
     let enCours = [], terminees = [];
 
     for (const list of (lists.value || [])) {
