@@ -1640,12 +1640,18 @@ function loadSavedState() {
   }
 
   // Impératifs
-  const imps = loadLocal("imperatifs", [{text:"",done:false,hours:""},{text:"",done:false,hours:""},{text:"",done:false,hours:""}]);
+  // Charge les impératifs depuis la sauvegarde persistante
+  let imps = [{text:"",done:false,hours:""},{text:"",done:false,hours:""},{text:"",done:false,hours:""}];
+  try {
+    const saved = localStorage.getItem("mit_imperatifs_persist");
+    if (saved) imps = JSON.parse(saved);
+  } catch(e) {}
+
   imps.forEach((imp, i) => {
     const input = document.getElementById("imp-input-" + i);
     const item = document.getElementById("imp-item-" + i);
     const hours = document.getElementById("imp-hours-" + i);
-    if (input) input.value = imp.text;
+    if (input) input.value = imp.text || "";
     if (item && imp.done) item.classList.add("done");
     if (hours && imp.hours) hours.value = imp.hours;
   });
@@ -1917,7 +1923,8 @@ function saveImperatifs() {
       hours: document.getElementById("imp-hours-" + i)?.value || ""
     });
   }
-  saveLocal("imperatifs", imps);
+  // Sauvegarde persistante (sans date) — reste jusqu'à ce que ce soit coché
+  try { localStorage.setItem("mit_imperatifs_persist", JSON.stringify(imps)); } catch(e) {}
   updateAProgress();
   updateChargeIndicator();
   refreshMatrixBadges();
