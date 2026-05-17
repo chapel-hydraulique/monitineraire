@@ -3176,26 +3176,68 @@ async function exportTasksToExcel() {
 
     for (const list of (lists.value || [])) {
       try {
-        const data = await graphGet(`/me/todo/lists/${list.id}/tasks?$top=100`);
-        (data.value || []).forEach(t => {
-          const hours = hoursMap[t.id] !== undefined ? hoursMap[t.id] : "";
-          const dateCreation = t.createdDateTime ? new Date(t.createdDateTime).toLocaleDateString("fr-FR") : "";
-          const dateRealisation = t.completedDateTime
-            ? new Date(t.completedDateTime.dateTime || t.completedDateTime).toLocaleDateString("fr-FR") : "";
-          const importance = t.importance === 'high' ? 'Haute' : t.importance === 'low' ? 'Basse' : 'Normale';
-          const row = {
-            "Liste": list.displayName,
-            "Titre": t.title || "",
-            "Importance": importance,
-            "Date création": dateCreation,
-            "Date réalisation": dateRealisation,
-            "Temps (h)": hours
-          };
-          if (t.status === 'completed') terminees.push(row);
-          else enCours.push(row);
-        });
+        // Tâches en cours
+        let nextLink = `/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=100`;
+        while (nextLink) {
+          const data = await graphGet(nextLink.startsWith('https') ? nextLink.replace('https://graph.microsoft.com/v1.0','') : nextLink);
+          (data.value || []).forEach(t => {
+            const hours = hoursMap[t.id] !== undefined ? hoursMap[t.id] : "";
+            const dateCreation = t.createdDateTime ? new Date(t.createdDateTime).toLocaleDateString("fr-FR") : "";
+            const importance = t.importance === 'high' ? 'Haute' : t.importance === 'low' ? 'Basse' : 'Normale';
+            enCours.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": "", "Temps (h)": hours });
+          });
+          nextLink = data['@odata.nextLink']?.replace('https://graph.microsoft.com/v1.0','') || null;
+        }
+        // Tâches terminées
+        let nextLink2 = `/me/todo/lists/${list.id}/tasks?$filter=status eq 'completed'&$top=100`;
+        while (nextLink2) {
+          const data2 = await graphGet(nextLink2.startsWith('https') ? nextLink2.replace('https://graph.microsoft.com/v1.0','') : nextLink2);
+          (data2.value || []).forEach(t => {
+            const hours = hoursMap[t.id] !== undefined ? hoursMap[t.id] : "";
+            const dateCreation = t.createdDateTime ? new Date(t.createdDateTime).toLocaleDateString("fr-FR") : "";
+            const dateRealisation = t.completedDateTime
+              ? new Date(t.completedDateTime.dateTime || t.completedDateTime).toLocaleDateString("fr-FR") : "";
+            const importance = t.importance === 'high' ? 'Haute' : t.importance === 'low' ? 'Basse' : 'Normale';
+            terminees.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours });
+          });
+          nextLink2 = data2['@odata.nextLink']?.replace('https://graph.microsoft.com/v1.0','') || null;
+        }
       } catch(e) {}
     }
+
+    // ── Tâches Planner (Affectées à moi par Félix) ──
+    try {
+      const planner = await graphGet(`/me/planner/tasks?$top=100`);
+      (planner.value || []).forEach(t => {
+        const hours = hoursMap[t.id] !== undefined ? hoursMap[t.id] : "";
+        const importance = t.priority <= 2 ? 'Haute' : 'Normale';
+        const due = t.dueDateTime ? new Date(t.dueDateTime).toLocaleDateString("fr-FR") : "";
+        const row = { "Liste": "Planner (Félix)", "Titre": t.title || "", "Importance": importance, "Date création": "", "Date réalisation": t.completedDateTime ? new Date(t.completedDateTime).toLocaleDateString("fr-FR") : "", "Temps (h)": hours };
+        if (t.percentComplete === 100 || t.completedDateTime) terminees.push(row);
+        else enCours.push(row);
+      });
+    } catch(e) {}
+
+    // ── Tâches liste "Planifié" To Do ──
+    try {
+      const lists2 = await graphGet(`/me/todo/lists?$top=50`);
+      const planifieList = (lists2.value || []).find(l => l.displayName.toLowerCase().includes("planif") || l.wellknownListName === "planned");
+      if (planifieList) {
+        const data = await graphGet(`/me/todo/lists/${planifieList.id}/tasks?$top=100`);
+        (data.value || []).forEach(t => {
+          // Évite les doublons avec les listes déjà exportées
+          const alreadyIn = [...enCours, ...terminees].some(r => r["Titre"] === t.title);
+          if (!alreadyIn) {
+            const hours = hoursMap[t.id] !== undefined ? hoursMap[t.id] : "";
+            const dateCreation = t.createdDateTime ? new Date(t.createdDateTime).toLocaleDateString("fr-FR") : "";
+            const dateRealisation = t.completedDateTime ? new Date(t.completedDateTime.dateTime || t.completedDateTime).toLocaleDateString("fr-FR") : "";
+            const row = { "Liste": "Planifié", "Titre": t.title || "", "Importance": t.importance === 'high' ? 'Haute' : 'Normale', "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours };
+            if (t.status === 'completed') terminees.push(row);
+            else enCours.push(row);
+          }
+        });
+      }
+    } catch(e) {}
 
     const total = enCours.length + terminees.length;
     if (!total) { showNotif("⚠️ Aucune tâche trouvée"); return; }
