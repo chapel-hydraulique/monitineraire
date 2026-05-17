@@ -1920,6 +1920,7 @@ function saveImperatifs() {
   saveLocal("imperatifs", imps);
   updateAProgress();
   updateChargeIndicator();
+  refreshMatrixBadges();
 }
 
 function clearImperatif(i) {
@@ -2084,28 +2085,61 @@ function getMatrixTexts() {
   return map;
 }
 
+function getImperatifTexts() {
+  // Retourne un map { texte_lowercase: "A1"|"A2"|"A3" }
+  const map = {};
+  for (let i = 0; i < 3; i++) {
+    const val = document.getElementById("imp-input-" + i)?.value?.trim().toLowerCase();
+    if (val) map[val] = "A" + (i+1);
+  }
+  return map;
+}
+
 function refreshMatrixBadges() {
   const map = getMatrixTexts();
+  const impMap = getImperatifTexts();
   const qLabels = { q1:"FAIRE", q2:"PLANIF.", q3:"DÉLÉG.", q4:"SUPPR." };
 
-  // Badges sur les tâches To Do
-  document.querySelectorAll(".todo-item").forEach(item => {
-    const text = item.dataset.text?.toLowerCase();
-    const existing = item.querySelector(".in-matrix-badge");
-    if (existing) existing.remove();
+  function applyBadges(item, text) {
+    // Retire les anciens badges
+    item.querySelectorAll(".in-matrix-badge, .email-in-matrix, .in-imp-badge").forEach(b => b.remove());
+
+    // Badge Eisenhower
     if (text && map[text]) {
       const badge = document.createElement("span");
       badge.className = "in-matrix-badge " + map[text];
       badge.textContent = qLabels[map[text]];
-      item.querySelector(".todo-item-text").after(badge);
+      const textEl = item.querySelector(".todo-item-text, .assigned-item-title");
+      if (textEl) textEl.after(badge);
     }
+
+    // Badge Impératif A1/A2/A3
+    if (text && impMap[text]) {
+      const badge = document.createElement("span");
+      badge.className = "in-matrix-badge";
+      badge.style.background = "#4f8ef730";
+      badge.style.color = "var(--accent)";
+      badge.style.border = "1px solid #4f8ef750";
+      badge.textContent = impMap[text];
+      const textEl = item.querySelector(".todo-item-text, .assigned-item-title");
+      if (textEl) textEl.after(badge);
+    }
+  }
+
+  // Badges sur les tâches To Do
+  document.querySelectorAll(".todo-item").forEach(item => {
+    applyBadges(item, item.dataset.text?.toLowerCase());
+  });
+
+  // Badges sur les tâches Affectées à moi
+  document.querySelectorAll(".assigned-item").forEach(item => {
+    applyBadges(item, item.dataset.text?.toLowerCase());
   });
 
   // Badges sur les emails flaggés
   document.querySelectorAll(".email-item").forEach(item => {
     const text = item.dataset.subj?.toLowerCase();
-    const existing = item.querySelector(".email-in-matrix");
-    if (existing) existing.remove();
+    item.querySelectorAll(".email-in-matrix").forEach(b => b.remove());
     if (text && map[text]) {
       const badge = document.createElement("span");
       badge.className = "email-in-matrix";
@@ -2732,7 +2766,7 @@ async function loadAssigned() {
 
 async function loadAllData() {
   await Promise.allSettled([loadCalendar(), loadFlaggedEmails(), loadToDo(), loadAssigned()]);
-  setTimeout(refreshMatrixBadges, 500);
+  setTimeout(refreshMatrixBadges, 800);
 }
 
 async function syncAll() {
