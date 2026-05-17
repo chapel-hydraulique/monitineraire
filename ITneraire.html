@@ -2459,7 +2459,20 @@ async function loadAssigned() {
       return;
     }
 
-    tasks.sort((a,b) => (b.importance==='high'?1:0) - (a.importance==='high'?1:0));
+    tasks.sort((a, b) => {
+      // 1. Importantes en premier
+      const aImp = a.importance === 'high' ? 1 : 0;
+      const bImp = b.importance === 'high' ? 1 : 0;
+      if (bImp !== aImp) return bImp - aImp;
+      // 2. Avec date d'échéance en premier (les plus proches)
+      const aHasDue = a.dueDateTime?.dateTime ? 1 : 0;
+      const bHasDue = b.dueDateTime?.dateTime ? 1 : 0;
+      if (bHasDue !== aHasDue) return bHasDue - aHasDue;
+      if (a.dueDateTime?.dateTime && b.dueDateTime?.dateTime) {
+        return new Date(a.dueDateTime.dateTime) - new Date(b.dueDateTime.dateTime);
+      }
+      return 0;
+    });
 
     el.innerHTML = `<div style="display:flex; flex-direction:column; gap:6px;">` +
       tasks.slice(0,20).map(t => {
