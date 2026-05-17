@@ -3192,9 +3192,9 @@ async function exportTasksToExcel() {
           const data = await graphGet(nextLink.startsWith('https') ? nextLink.replace('https://graph.microsoft.com/v1.0','') : nextLink);
           (data.value || []).forEach(t => {
             const hours = extractHoursFromTask(t, hoursMap);
-            const dateCreation = t.createdDateTime ? new Date(t.createdDateTime).toLocaleDateString("fr-FR") : "";
+            const dateCreation = t.createdDateTime ? new Date(t.createdDateTime) : null;
             const importance = t.importance === 'high' ? 'Haute' : t.importance === 'low' ? 'Basse' : 'Normale';
-            enCours.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": "", "Temps (h)": hours });
+            enCours.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": null, "Temps (h)": hours });
           });
           nextLink = data['@odata.nextLink']?.replace('https://graph.microsoft.com/v1.0','') || null;
         }
@@ -3204,9 +3204,9 @@ async function exportTasksToExcel() {
           const data2 = await graphGet(nextLink2.startsWith('https') ? nextLink2.replace('https://graph.microsoft.com/v1.0','') : nextLink2);
           (data2.value || []).forEach(t => {
             const hours = extractHoursFromTask(t, hoursMap);
-            const dateCreation = t.createdDateTime ? new Date(t.createdDateTime).toLocaleDateString("fr-FR") : "";
+            const dateCreation = t.createdDateTime ? new Date(t.createdDateTime) : null;
             const dateRealisation = t.completedDateTime
-              ? new Date(t.completedDateTime.dateTime || t.completedDateTime).toLocaleDateString("fr-FR") : "";
+              ? new Date(t.completedDateTime.dateTime || t.completedDateTime) : null;
             const importance = t.importance === 'high' ? 'Haute' : t.importance === 'low' ? 'Basse' : 'Normale';
             terminees.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours });
           });
@@ -3221,8 +3221,10 @@ async function exportTasksToExcel() {
       (planner.value || []).forEach(t => {
         const hours = hoursMap[t.id] !== undefined ? hoursMap[t.id] : "";
         const importance = t.priority <= 2 ? 'Haute' : 'Normale';
-        const due = t.dueDateTime ? new Date(t.dueDateTime).toLocaleDateString("fr-FR") : "";
-        const row = { "Liste": "Planner (Félix)", "Titre": t.title || "", "Importance": importance, "Date création": "", "Date réalisation": t.completedDateTime ? new Date(t.completedDateTime).toLocaleDateString("fr-FR") : "", "Temps (h)": hours };
+        const dateCreation = t.createdDateTime ? new Date(t.createdDateTime) : null;
+        const dateRealisation = t.completedDateTime ? new Date(t.completedDateTime) : null;
+        const due = t.dueDateTime ? " (éch. " + new Date(t.dueDateTime).toLocaleDateString("fr-FR") + ")" : "";
+        const row = { "Liste": "Planner (Félix)", "Titre": (t.title || "") + due, "Importance": importance, "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours };
         if (t.percentComplete === 100 || t.completedDateTime) terminees.push(row);
         else enCours.push(row);
       });
@@ -3239,8 +3241,8 @@ async function exportTasksToExcel() {
           const alreadyIn = [...enCours, ...terminees].some(r => r["Titre"] === t.title);
           if (!alreadyIn) {
             const hours = hoursMap[t.id] !== undefined ? hoursMap[t.id] : "";
-            const dateCreation = t.createdDateTime ? new Date(t.createdDateTime).toLocaleDateString("fr-FR") : "";
-            const dateRealisation = t.completedDateTime ? new Date(t.completedDateTime.dateTime || t.completedDateTime).toLocaleDateString("fr-FR") : "";
+            const dateCreation = t.createdDateTime ? new Date(t.createdDateTime) : null;
+            const dateRealisation = t.completedDateTime ? new Date(t.completedDateTime.dateTime || t.completedDateTime) : null;
             const row = { "Liste": "Planifié", "Titre": t.title || "", "Importance": t.importance === 'high' ? 'Haute' : 'Normale', "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours };
             if (t.status === 'completed') terminees.push(row);
             else enCours.push(row);
@@ -3327,15 +3329,30 @@ async function exportTasksToExcel() {
 
     // ── Onglet En cours ──
     if (enCours.length) {
-      const wsEnCours = XLSX.utils.json_to_sheet(enCours);
+      const wsEnCours = XLSX.utils.json_to_sheet(enCours, {cellDates: true});
       wsEnCours['!cols'] = [{wch:20},{wch:45},{wch:12},{wch:14},{wch:16},{wch:10}];
+      // Formate les colonnes date (D=Date création, E=Date réalisation)
+      const rangeEC = XLSX.utils.decode_range(wsEnCours['!ref'] || "A1");
+      for (let R = 1; R <= rangeEC.e.r; R++) {
+        ['D','E'].forEach(col => {
+          const cell = wsEnCours[col + (R+1)];
+          if (cell && cell.t === 'd') cell.z = 'dd/mm/yyyy';
+        });
+      }
       XLSX.utils.book_append_sheet(wb, wsEnCours, "En cours");
     }
 
     // ── Onglet Terminées ──
     if (terminees.length) {
-      const wsTerm = XLSX.utils.json_to_sheet(terminees);
+      const wsTerm = XLSX.utils.json_to_sheet(terminees, {cellDates: true});
       wsTerm['!cols'] = [{wch:20},{wch:45},{wch:12},{wch:14},{wch:16},{wch:10}];
+      const rangeTerm = XLSX.utils.decode_range(wsTerm['!ref'] || "A1");
+      for (let R = 1; R <= rangeTerm.e.r; R++) {
+        ['D','E'].forEach(col => {
+          const cell = wsTerm[col + (R+1)];
+          if (cell && cell.t === 'd') cell.z = 'dd/mm/yyyy';
+        });
+      }
       XLSX.utils.book_append_sheet(wb, wsTerm, "Terminées");
     }
 
