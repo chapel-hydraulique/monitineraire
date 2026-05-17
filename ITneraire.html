@@ -2085,10 +2085,19 @@ async function loadToDo() {
       return;
     }
 
+    // Uniquement les listes "Tâches" et "Important"
+    const TODO_LISTS = ["tâches", "tasks", "important"];
+    const filteredLists = lists.value.filter(l =>
+      TODO_LISTS.includes(l.displayName.toLowerCase()) ||
+      l.wellknownListName === "defaultList" ||
+      l.wellknownListName === "flaggedEmails" ||
+      l.displayName.toLowerCase() === "important"
+    );
+
     let allTasks = [];
-    for (const list of lists.value) {
+    for (const list of filteredLists) {
       try {
-        // Pagination pour récupérer toutes les tâches (pas seulement les 20 premières)
+        // Pagination pour récupérer toutes les tâches
         let nextLink = `/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=100`;
         while (nextLink) {
           const tasks = await graphGet(nextLink.startsWith('https') ? nextLink.replace('https://graph.microsoft.com/v1.0','') : nextLink);
@@ -2399,47 +2408,51 @@ async function loadAssigned() {
   const el = document.getElementById("assigned-content");
   el.innerHTML = loadingHTML();
   try {
-    // Récupère le profil pour connaître l'email de l'utilisateur
-    const me = await graphGet(`/me?$select=mail,userPrincipalName`);
-    const myEmail = (me.mail || me.userPrincipalName || "").toLowerCase();
-
-    // Parcourt toutes les listes To Do
-    const lists = await graphGet(`/me/todo/lists?$top=50`);
     let tasks = [];
+    const seenTitles = new Set();
 
-    for (const list of (lists.value || [])) {
-      try {
-        const data = await graphGet(`/me/todo/lists/${list.id}/tasks?$top=50`);
-        (data.value || [])
-          .filter(t => t.status !== 'completed')
-          .forEach(t => {
-            // Une tâche est "affectée à moi" si elle a un champ assignments
-            // ou si elle est dans une liste partagée avec moi comme assignee
-            const assignments = t.assignments || {};
-            const hasAssignment = Object.keys(assignments).length > 0;
-            // On vérifie aussi via checklistItems ou body
-            if (hasAssignment) {
-              tasks.push({ ...t, listName: list.displayName });
-            }
-          });
-      } catch(e) {}
-    }
+    // 1. Tâches Planner (assignées par Félix via Teams)
+    try {
+      const planner = await graphGet(`/me/planner/tasks?$top=100`);
+      (planner.value || [])
+        .filter(t => !t.completedDateTime && t.percentComplete < 100)
+        .forEach(t => {
+          const titleKey = t.title?.toLowerCase().trim();
+          if (!seenTitles.has(titleKey)) {
+            seenTitles.add(titleKey);
+            tasks.push({
+              id: t.id,
+              title: t.title,
+              importance: t.priority <= 2 ? 'high' : 'normal',
+              listName: 'Planner (Félix)',
+              dueDateTime: t.dueDateTime ? { dateTime: t.dueDateTime } : null,
+            });
+          }
+        });
+    } catch(e) {}
 
-    // Si aucune tâche trouvée via assignments, utilise l'endpoint Planner
-    // (les tâches "Affectées à moi" dans To Do viennent souvent de Planner/Teams)
-    if (!tasks.length) {
-      try {
-        const planner = await graphGet(`/me/planner/tasks?$top=50`);
-        tasks = (planner.value || [])
-          .filter(t => !t.completedDateTime)
-          .map(t => ({
-            title: t.title,
-            importance: t.priority <= 2 ? 'high' : 'normal',
-            listName: t.planId ? 'Planner' : 'Teams',
-            dueDateTime: t.dueDateTime ? { dateTime: t.dueDateTime } : null,
-          }));
-      } catch(e) {}
-    }
+    // 2. Liste "Planifié" de To Do (sans doublons)
+    try {
+      const lists = await graphGet(`/me/todo/lists?$top=50`);
+      const planifieList = (lists.value || []).find(l =>
+        l.displayName.toLowerCase().includes("planif") ||
+        l.wellknownListName === "planned"
+      );
+      if (planifieList) {
+        const data = await graphGet(`/me/todo/lists/${planifieList.id}/tasks?$filter=status ne 'completed'&$top=100`);
+        (data.value || []).forEach(t => {
+          const titleKey = t.title?.toLowerCase().trim();
+          if (!seenTitles.has(titleKey)) {
+            seenTitles.add(titleKey);
+            tasks.push({
+              ...t,
+              listName: 'Planifié',
+              listId: planifieList.id,
+            });
+          }
+        });
+      }
+    } catch(e) {}
 
     if (!tasks.length) {
       el.innerHTML = `<div class="empty-state">✅ Aucune tâche affectée</div>`;
