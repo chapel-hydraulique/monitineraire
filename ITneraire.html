@@ -1640,12 +1640,14 @@ function loadSavedState() {
   }
 
   // Impératifs
-  const imps = loadLocal("imperatifs", [{text:"",done:false},{text:"",done:false},{text:"",done:false}]);
+  const imps = loadLocal("imperatifs", [{text:"",done:false,hours:""},{text:"",done:false,hours:""},{text:"",done:false,hours:""}]);
   imps.forEach((imp, i) => {
     const input = document.getElementById("imp-input-" + i);
     const item = document.getElementById("imp-item-" + i);
+    const hours = document.getElementById("imp-hours-" + i);
     if (input) input.value = imp.text;
     if (item && imp.done) item.classList.add("done");
+    if (hours && imp.hours) hours.value = imp.hours;
   });
   updateAProgress();
 
@@ -1871,6 +1873,15 @@ function initImperatifs() {
     div.innerHTML = `
       <span class="imperatif-num">A${i+1}</span>
       <input class="imperatif-input" id="imp-input-${i}" placeholder="Impératif #${i+1} du jour… (ou glisse une tâche)" oninput="saveImperatifs()">
+      <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;" title="Estimation (heures)">
+        <input type="number" id="imp-hours-${i}" min="0" max="24" step="0.25"
+          placeholder="0" value=""
+          style="width:52px;background:var(--surface3);border:1px solid var(--border);border-radius:4px;color:var(--warn);font-family:var(--font-mono);font-size:11px;padding:2px 4px;text-align:center;outline:none;"
+          onclick="event.stopPropagation()"
+          oninput="saveImperatifs(); updateChargeIndicator()">
+        <span style="font-size:10px;color:#9aa0bc;font-family:var(--font-mono);">h</span>
+      </div>
+      <div style="font-size:13px;cursor:pointer;color:#9aa0bc;padding:0 2px;flex-shrink:0;" title="Vider" onclick="clearImperatif(${i})">×</div>
       <div class="imperatif-check" onclick="toggleImperatif(${i})" title="Marquer fait">✓</div>`;
     // Drag & drop
     div.addEventListener("dragover", e => { e.preventDefault(); div.classList.add("drag-over"); });
@@ -1901,13 +1912,24 @@ function saveImperatifs() {
   const imps = [];
   for (let i = 0; i < 3; i++) {
     imps.push({
-      text: document.getElementById("imp-input-" + i).value,
-      done: document.getElementById("imp-item-" + i).classList.contains("done")
+      text: document.getElementById("imp-input-" + i)?.value || "",
+      done: document.getElementById("imp-item-" + i)?.classList.contains("done") || false,
+      hours: document.getElementById("imp-hours-" + i)?.value || ""
     });
   }
   saveLocal("imperatifs", imps);
   updateAProgress();
   updateChargeIndicator();
+}
+
+function clearImperatif(i) {
+  const input = document.getElementById("imp-input-" + i);
+  const hours = document.getElementById("imp-hours-" + i);
+  const item = document.getElementById("imp-item-" + i);
+  if (input) input.value = "";
+  if (hours) hours.value = "";
+  if (item) item.classList.remove("done");
+  saveImperatifs();
 }
 
 function updateAProgress() {
@@ -2751,17 +2773,22 @@ function updateChargeIndicator() {
       });
     }
 
-    // 2. Temps pomodoros planifiés (pomodoros restants × 25min)
+    // 2. Temps tâches planifiées — basé sur les estimations saisies sur A1/A2/A3
     const pomosDone = parseInt(document.getElementById("pomo-count-today")?.textContent) || 0;
-    // Impératifs non cochés = tâches restantes estimées à 2 pomodoros chacune
-    let imperatifsRestants = 0;
+    let imperatifsMin = 0;
+    let imperatifsDesc = [];
     for (let i = 0; i < 3; i++) {
       const val = document.getElementById("imp-input-" + i)?.value?.trim();
       const done = document.getElementById("imp-item-" + i)?.classList.contains("done");
-      if (val && !done) imperatifsRestants++;
+      const h = parseFloat(document.getElementById("imp-hours-" + i)?.value) || 0;
+      if (val && !done) {
+        const min = h > 0 ? Math.round(h * 60) : 50; // défaut 50min (2 pomodoros) si pas d'estimation
+        imperatifsMin += min;
+        imperatifsDesc.push(`A${i+1}: ${h > 0 ? h+'h' : '~50min'}`);
+      }
     }
-    const pomosPlanned = imperatifsRestants * 2; // 2 pomodoros par impératif
-    const pomosMin = pomosPlanned * 25 + pomosDone * 25;
+    const pomosMin = imperatifsMin + pomosDone * 25;
+    const pomosPlanned = Math.round(pomosMin / 25);
 
     // 3. Calcul total
     const totalMin = meetingsMin + pomosMin + EMAILS_MINUTES;
@@ -2782,7 +2809,7 @@ function updateChargeIndicator() {
     // Tooltip détail
     const fmt = m => m >= 60 ? Math.floor(m/60) + "h" + (m%60 ? String(m%60).padStart(2,'0') : "") : m + "min";
     document.getElementById("ct-meetings").textContent = fmt(meetingsMin);
-    document.getElementById("ct-pomodoros").textContent = fmt(pomosMin) + " (" + pomosPlanned + " pomodoros)";
+    document.getElementById("ct-pomodoros").textContent = fmt(imperatifsMin) + (imperatifsDesc.length ? " (" + imperatifsDesc.join(", ") + ")" : "");
     document.getElementById("ct-total").textContent = fmt(totalMin) + " / 8h " + emoji;
 
   } catch(e) { console.warn("Charge indicator error:", e); }
