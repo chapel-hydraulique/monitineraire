@@ -147,6 +147,30 @@
   .sync-btn:hover { border-color: var(--accent); color: var(--accent); }
   .sync-btn.syncing svg { animation: spin 1s linear infinite; }
 
+
+  /* ── CHARGE INDICATOR ── */
+  .charge-wrap {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 12px; border-radius: 20px;
+    border: 1px solid var(--border); background: transparent;
+    cursor: pointer; transition: all 0.2s; position: relative;
+  }
+  .charge-wrap:hover { border-color: var(--accent); }
+  .charge-label { font-size: 11px; color: #9aa0bc; font-family: var(--font-mono); white-space: nowrap; }
+  .charge-bar-bg { width: 80px; height: 6px; background: var(--surface3); border-radius: 3px; overflow: hidden; }
+  .charge-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease, background 0.4s; }
+  .charge-pct { font-size: 11px; font-family: var(--font-mono); font-weight: 600; min-width: 32px; }
+  .charge-tooltip {
+    position: absolute; top: 38px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; font-size: 12px; width: 230px;
+    box-shadow: var(--shadow-lg); z-index: 200; display: none; line-height: 1.9;
+    color: var(--text2);
+  }
+  .charge-wrap:hover .charge-tooltip { display: block; }
+  .charge-row { display: flex; justify-content: space-between; }
+  .charge-row.total { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 6px; color: var(--text); font-weight: 600; }
+
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── AUTH SCREEN ── */
@@ -884,6 +908,80 @@
     line-height: 1.5;
   }
 
+  /* ── POMODORO TASK PICKER ── */
+  .pomo-picker-overlay {
+    position: fixed; inset: 0;
+    background: #000a;
+    display: none; align-items: center; justify-content: center;
+    z-index: 1200;
+    backdrop-filter: blur(6px);
+  }
+  .pomo-picker-overlay.active { display: flex; }
+
+  .pomo-picker-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    width: 480px; max-width: 95vw;
+    max-height: 70vh;
+    display: flex; flex-direction: column;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+  }
+
+  .pomo-picker-header {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .pomo-picker-header h3 {
+    font-family: var(--font-head); font-size: 16px; font-weight: 700;
+  }
+
+  .pomo-picker-search {
+    width: 100%; padding: 10px 14px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text);
+    font-family: var(--font-body); font-size: 13px;
+    outline: none; margin: 12px 20px 0; width: calc(100% - 40px);
+    transition: border-color 0.2s;
+  }
+  .pomo-picker-search:focus { border-color: var(--accent); }
+
+  .pomo-picker-list {
+    flex: 1; overflow-y: auto;
+    padding: 8px 12px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+
+  .pomo-picker-section {
+    font-size: 10px; font-family: var(--font-mono);
+    color: var(--text3); text-transform: uppercase;
+    letter-spacing: 1px; padding: 8px 8px 4px;
+  }
+
+  .pomo-picker-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer; transition: all 0.15s;
+    font-size: 13px;
+  }
+  .pomo-picker-item:hover { background: var(--surface3); border-color: var(--accent); }
+  .pomo-picker-item.imperatif { border-left: 3px solid var(--accent); }
+  .pomo-picker-item .item-num {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--accent); font-weight: 600; flex-shrink: 0;
+  }
+  .pomo-picker-item .item-text { flex: 1; }
+  .pomo-picker-item .item-list {
+    font-size: 10px; color: var(--text3);
+    font-family: var(--font-mono); flex-shrink: 0;
+  }
+
   /* ── NOTIFICATION ── */
   #notif {
     position: fixed; top: 70px; right: 20px;
@@ -991,6 +1089,22 @@
       </svg>
       Restaurer temps
     </button>
+    <!-- Indicateur de charge -->
+    <div class="charge-wrap" id="charge-wrap">
+      <span class="charge-label">Charge</span>
+      <div class="charge-bar-bg">
+        <div class="charge-bar-fill" id="charge-fill" style="width:0%; background:var(--success);"></div>
+      </div>
+      <span class="charge-pct" id="charge-pct" style="color:var(--success);">—</span>
+      <div class="charge-tooltip" id="charge-tooltip">
+        <div style="font-weight:700; margin-bottom:6px; color:var(--text);">📊 Charge du jour</div>
+        <div class="charge-row"><span>📅 Réunions</span><span id="ct-meetings">—</span></div>
+        <div class="charge-row"><span>🍅 Pomodoros</span><span id="ct-pomodoros">—</span></div>
+        <div class="charge-row"><span>📧 Emails/interruptions</span><span id="ct-emails">1h</span></div>
+        <div class="charge-row total"><span>Total / 8h</span><span id="ct-total">—</span></div>
+      </div>
+    </div>
+
     <div class="topbar-sep"></div>
     <div class="topbar-date" id="top-date"></div>
     <div class="topbar-user" id="user-info" style="display:none" title="Cliquer pour se déconnecter" onclick="resetConfig()">
@@ -1301,6 +1415,18 @@
       <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
       <button class="btn btn-primary" onclick="modalConfirm()">Ajouter</button>
     </div>
+  </div>
+</div>
+
+<!-- ══ POMODORO TASK PICKER ══ -->
+<div class="pomo-picker-overlay" id="pomo-picker-overlay" onclick="if(event.target===this) closePomoPicker()">
+  <div class="pomo-picker-modal">
+    <div class="pomo-picker-header">
+      <h3>🍅 Choisir la tâche</h3>
+      <button onclick="closePomoPicker()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <input class="pomo-picker-search" id="pomo-picker-search" placeholder="Rechercher une tâche…" oninput="filterPomoTasks(this.value)">
+    <div class="pomo-picker-list" id="pomo-picker-list"></div>
   </div>
 </div>
 
@@ -1781,6 +1907,7 @@ function saveImperatifs() {
   }
   saveLocal("imperatifs", imps);
   updateAProgress();
+  updateChargeIndicator();
 }
 
 function updateAProgress() {
@@ -1993,6 +2120,10 @@ async function loadCalendar() {
       el.innerHTML = `<div class="empty-state">📭 Aucun événement aujourd'hui</div>`;
       return;
     }
+
+    // Stocke pour l'indicateur de charge
+    window._agendaEvents = data.value;
+    setTimeout(updateChargeIndicator, 200);
 
     const nowMs = Date.now();
     el.innerHTML = `<div class="agenda-list">` +
@@ -2400,10 +2531,72 @@ function assignImperatif(text) {
 }
 
 function showTaskPicker() {
-  if (!todoTasks.length) return showNotif("Charge d'abord tes tâches To Do");
-  openModal("Choisir la tâche Pomodoro", pomoTaskText, text => {
-    if (text) setPomoTask(text);
-  });
+  buildPomoPickerList("");
+  document.getElementById("pomo-picker-overlay").classList.add("active");
+  document.getElementById("pomo-picker-search").value = "";
+  setTimeout(() => document.getElementById("pomo-picker-search").focus(), 50);
+}
+
+function closePomoPicker() {
+  document.getElementById("pomo-picker-overlay").classList.remove("active");
+}
+
+function buildPomoPickerList(filter) {
+  const list = document.getElementById("pomo-picker-list");
+  const f = filter.toLowerCase();
+  list.innerHTML = "";
+
+  // ── Section Impératifs du jour ──
+  const imperatifs = [];
+  for (let i = 0; i < 3; i++) {
+    const val = document.getElementById("imp-input-" + i)?.value?.trim();
+    const done = document.getElementById("imp-item-" + i)?.classList.contains("done");
+    if (val && !done && (!f || val.toLowerCase().includes(f))) {
+      imperatifs.push({ num: "A" + (i+1), text: val });
+    }
+  }
+
+  if (imperatifs.length) {
+    const sec = document.createElement("div");
+    sec.className = "pomo-picker-section";
+    sec.textContent = "🎯 Impératifs du jour";
+    list.appendChild(sec);
+    imperatifs.forEach(imp => {
+      const item = document.createElement("div");
+      item.className = "pomo-picker-item imperatif";
+      item.innerHTML = `<span class="item-num">${imp.num}</span><span class="item-text">${escHtml(imp.text)}</span>`;
+      item.onclick = () => { setPomoTask(imp.text); closePomoPicker(); };
+      list.appendChild(item);
+    });
+  }
+
+  // ── Section To Do ──
+  const filtered = todoTasks.filter(t => !f || t.title?.toLowerCase().includes(f));
+  if (filtered.length) {
+    const sec = document.createElement("div");
+    sec.className = "pomo-picker-section";
+    sec.textContent = "✅ Tâches To Do";
+    list.appendChild(sec);
+    filtered.slice(0, 30).forEach(t => {
+      const text = t.title || "(Sans titre)";
+      const item = document.createElement("div");
+      item.className = "pomo-picker-item";
+      item.innerHTML = `
+        ${t.importance === 'high' ? '<span style="font-size:11px;">⭐</span>' : ''}
+        <span class="item-text">${escHtml(text)}</span>
+        <span class="item-list">${escHtml(t.listName || "")}</span>`;
+      item.onclick = () => { setPomoTask(text); closePomoPicker(); };
+      list.appendChild(item);
+    });
+  }
+
+  if (!imperatifs.length && !filtered.length) {
+    list.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px;">Aucune tâche trouvée</div>`;
+  }
+}
+
+function filterPomoTasks(val) {
+  buildPomoPickerList(val);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2527,6 +2720,72 @@ async function syncAll() {
   await loadAllData();
   btn.classList.remove("syncing");
   showNotif("✅ Synchronisé !");
+}
+
+// ════════════════════════════════════════════════════════════════
+//  INDICATEUR DE CHARGE
+// ════════════════════════════════════════════════════════════════
+function updateChargeIndicator() {
+  try {
+    const JOUR_MINUTES = 480; // 8h
+    const EMAILS_MINUTES = 60; // forfait 1h interruptions/emails
+
+    // 1. Temps réunions depuis l'agenda affiché
+    let meetingsMin = 0;
+    document.querySelectorAll(".agenda-item:not(.past)").forEach(item => {
+      const timeEl = item.querySelector(".agenda-time");
+      const metaEl = item.querySelector(".agenda-meta");
+      // Essaie de récupérer la durée depuis les données agenda stockées
+    });
+    // Utilise les données agenda en mémoire
+    if (window._agendaEvents) {
+      const now = new Date();
+      const startOfDay = new Date(now); startOfDay.setHours(0,0,0,0);
+      const endOfDay = new Date(now); endOfDay.setHours(23,59,59,999);
+      window._agendaEvents.forEach(ev => {
+        const s = new Date(ev.start.dateTime ? ev.start.dateTime + (ev.start.dateTime.endsWith('Z')?'':'Z') : ev.start.date);
+        const e = new Date(ev.end.dateTime ? ev.end.dateTime + (ev.end.dateTime.endsWith('Z')?'':'Z') : ev.end.date);
+        if (s >= startOfDay && e <= endOfDay) {
+          meetingsMin += Math.round((e - s) / 60000);
+        }
+      });
+    }
+
+    // 2. Temps pomodoros planifiés (pomodoros restants × 25min)
+    const pomosDone = parseInt(document.getElementById("pomo-count-today")?.textContent) || 0;
+    // Impératifs non cochés = tâches restantes estimées à 2 pomodoros chacune
+    let imperatifsRestants = 0;
+    for (let i = 0; i < 3; i++) {
+      const val = document.getElementById("imp-input-" + i)?.value?.trim();
+      const done = document.getElementById("imp-item-" + i)?.classList.contains("done");
+      if (val && !done) imperatifsRestants++;
+    }
+    const pomosPlanned = imperatifsRestants * 2; // 2 pomodoros par impératif
+    const pomosMin = pomosPlanned * 25 + pomosDone * 25;
+
+    // 3. Calcul total
+    const totalMin = meetingsMin + pomosMin + EMAILS_MINUTES;
+    const pct = Math.min(Math.round(totalMin / JOUR_MINUTES * 100), 100);
+
+    // Couleur selon niveau
+    let color, emoji;
+    if (pct < 70) { color = "var(--success)"; emoji = "🟢"; }
+    else if (pct < 90) { color = "var(--warn)"; emoji = "🟠"; }
+    else { color = "var(--danger)"; emoji = "🔴"; }
+
+    // Mise à jour UI
+    document.getElementById("charge-fill").style.width = pct + "%";
+    document.getElementById("charge-fill").style.background = color;
+    document.getElementById("charge-pct").textContent = pct + "%";
+    document.getElementById("charge-pct").style.color = color;
+
+    // Tooltip détail
+    const fmt = m => m >= 60 ? Math.floor(m/60) + "h" + (m%60 ? String(m%60).padStart(2,'0') : "") : m + "min";
+    document.getElementById("ct-meetings").textContent = fmt(meetingsMin);
+    document.getElementById("ct-pomodoros").textContent = fmt(pomosMin) + " (" + pomosPlanned + " pomodoros)";
+    document.getElementById("ct-total").textContent = fmt(totalMin) + " / 8h " + emoji;
+
+  } catch(e) { console.warn("Charge indicator error:", e); }
 }
 
 // ════════════════════════════════════════════════════════════════
