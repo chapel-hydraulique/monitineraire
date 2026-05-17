@@ -1081,13 +1081,11 @@
       </svg>
       Export Excel
     </button>
-    <button class="sync-btn" onclick="importHoursFromJSON()" title="Restaurer les temps depuis un fichier JSON">
+    <button class="sync-btn" onclick="saveToOneDrive()" title="Sauvegarder maintenant sur OneDrive">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7,10 9,15 17,10"/>
-        <line x1="12" y1="3" x2="12" y2="15"/>
+        <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
       </svg>
-      Restaurer temps
+      OneDrive
     </button>
     <!-- Indicateur de charge -->
     <div class="charge-wrap" id="charge-wrap">
@@ -1475,7 +1473,7 @@ function buildMsalConfig(clientId) {
   };
 }
 
-const SCOPES = ["User.Read","Tasks.ReadWrite","Tasks.ReadWrite.Shared","Mail.Read","Mail.ReadWrite","Calendars.Read","Tasks.Read","Group.Read.All"];
+const SCOPES = ["User.Read","Tasks.ReadWrite","Tasks.ReadWrite.Shared","Mail.Read","Mail.ReadWrite","Calendars.Read","Tasks.Read","Group.Read.All","Files.ReadWrite"];
 
 // ════════════════════════════════════════════════════════════════
 //  MSAL
@@ -1607,6 +1605,14 @@ function showApp(account) {
   loadSavedState();
   updateTopDate();
   setInterval(updateTopDate, 60000);
+
+  // Restauration OneDrive (prioritaire sur localStorage)
+  loadFromOneDrive().then(restored => {
+    if (!restored) {
+      // Fallback localStorage si OneDrive échoue
+      console.log("OneDrive non disponible, utilisation du localStorage");
+    }
+  });
 }
 
 function updateTopDate() {
@@ -1928,6 +1934,7 @@ function saveImperatifs() {
   updateAProgress();
   updateChargeIndicator();
   refreshMatrixBadges();
+  scheduleSaveToOneDrive();
 }
 
 function clearImperatif(i) {
@@ -2079,6 +2086,7 @@ function saveEisenhower() {
   try { localStorage.setItem("mit_eisenhower_persist", JSON.stringify(data)); } catch(e) {}
   // Rafraîchit les badges sur To Do et emails
   refreshMatrixBadges();
+  scheduleSaveToOneDrive();
 }
 
 function getMatrixTexts() {
@@ -2952,9 +2960,8 @@ function saveTaskHours(taskId, hours) {
     clearTimeout(hoursSaveTimer);
     hoursSaveTimer = setTimeout(() => saveHoursToToDo(taskId, parseFloat(hours) || 0), 2000);
 
-    // 3. Export JSON automatique (debounce 3s)
-    clearTimeout(window.jsonExportTimer);
-    window.jsonExportTimer = setTimeout(() => autoExportHoursJSON(), 3000);
+    // 3. Sauvegarde OneDrive (debounce 3s)
+    scheduleSaveToOneDrive();
 
   } catch(e) {}
 }
@@ -2985,25 +2992,132 @@ async function saveHoursToToDo(taskId, hours) {
 }
 
 function autoExportHoursJSON() {
+  // Remplacé par sauvegarde OneDrive — plus de téléchargement automatique
+  saveToOneDrive();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  SAUVEGARDE / RESTAURATION ONEDRIVE
+// ════════════════════════════════════════════════════════════════
+const ONEDRIVE_FILE = "MonITineraire_Data.json";
+let oneDriveSaveTimer = null;
+
+function collectAppData() {
+  // Collecte toutes les données à sauvegarder
+  const imperatifs = [];
+  for (let i = 0; i < 3; i++) {
+    imperatifs.push({
+      text: document.getElementById("imp-input-" + i)?.value || "",
+      done: document.getElementById("imp-item-" + i)?.classList.contains("done") || false,
+      hours: document.getElementById("imp-hours-" + i)?.value || "",
+      estimated: document.getElementById("imp-hours-" + i)?.value || ""
+    });
+  }
+
+  const eisen = {};
+  ["q1","q2","q3","q4"].forEach(q => {
+    eisen[q] = Array.from(document.getElementById(q + "-list")?.querySelectorAll(".eisen-task") || []).map(el => ({
+      id: el.dataset.id, text: el.dataset.text,
+      todoId: el.dataset.todoId, listId: el.dataset.listId
+    }));
+  });
+
+  return {
+    version: 2,
+    savedAt: new Date().toISOString(),
+    imperatifs,
+    eisenhower: eisen,
+    hours: getAllTaskHours(),
+    crapaud: {
+      text: document.getElementById("crapaud-input")?.value || "",
+      done: document.getElementById("crapaud-row")?.classList.contains("done") || false
+    }
+  };
+}
+
+async function saveToOneDrive() {
   try {
-    const all = getAllTaskHours();
-    if (!Object.keys(all).length) return;
-    const data = {
-      exportDate: new Date().toISOString(),
-      user: "ebaiamonte@chapel-hydraulique.com",
-      hours: all
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `MonITineraire_Temps_${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showNotif("📥 Sauvegarde JSON téléchargée automatiquement");
-  } catch(e) {}
+    const token = await acquireToken();
+    if (!token) return;
+    const data = collectAppData();
+    const json = JSON.stringify(data, null, 2);
+    await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/MonITineraire/${ONEDRIVE_FILE}:/content`, {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: json
+    });
+    // Indicateur discret dans la topbar
+    const lbl = document.getElementById("top-date");
+    if (lbl) {
+      const orig = lbl.textContent;
+      lbl.textContent = "✓ Sauvegardé sur OneDrive";
+      setTimeout(() => lbl.textContent = orig, 2000);
+    }
+  } catch(e) {
+    console.warn("OneDrive save failed:", e);
+  }
+}
+
+async function loadFromOneDrive() {
+  try {
+    const token = await acquireToken();
+    if (!token) return false;
+    const r = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/MonITineraire/${ONEDRIVE_FILE}:/content`, {
+      headers: { Authorization: "Bearer " + token }
+    });
+    if (!r.ok) return false;
+    const data = await r.json();
+    if (!data) return false;
+
+    // Restaure les impératifs
+    if (data.imperatifs) {
+      data.imperatifs.forEach((imp, i) => {
+        const input = document.getElementById("imp-input-" + i);
+        const item = document.getElementById("imp-item-" + i);
+        const hours = document.getElementById("imp-hours-" + i);
+        if (input) input.value = imp.text || "";
+        if (item) { item.classList.remove("done"); if (imp.done) item.classList.add("done"); }
+        if (hours) hours.value = imp.hours || "";
+      });
+    }
+
+    // Restaure Eisenhower
+    if (data.eisenhower) {
+      ["q1","q2","q3","q4"].forEach(q => {
+        const list = document.getElementById(q + "-list");
+        if (list) list.innerHTML = "";
+        (data.eisenhower[q] || []).forEach(t => addEisenTaskDirect(q, t.text, t.id, false, t.todoId, t.listId));
+      });
+    }
+
+    // Restaure les heures
+    if (data.hours) {
+      try { localStorage.setItem("mit_hours", JSON.stringify(data.hours)); } catch(e) {}
+    }
+
+    // Restaure le crapaud
+    if (data.crapaud) {
+      const inp = document.getElementById("crapaud-input");
+      const row = document.getElementById("crapaud-row");
+      const check = document.getElementById("crapaud-check");
+      if (inp) inp.value = data.crapaud.text || "";
+      if (row && data.crapaud.done) { row.classList.add("done"); if(check) check.textContent = "✅"; }
+    }
+
+    showNotif("☁️ Données restaurées depuis OneDrive !");
+    updateAProgress();
+    updateChargeIndicator();
+    setTimeout(refreshMatrixBadges, 300);
+    return true;
+  } catch(e) {
+    console.warn("OneDrive load failed:", e);
+    return false;
+  }
+}
+
+function scheduleSaveToOneDrive() {
+  clearTimeout(oneDriveSaveTimer);
+  oneDriveSaveTimer = setTimeout(saveToOneDrive, 3000);
 }
 
 function loadTaskHours(taskId) {
@@ -3111,6 +3225,19 @@ async function exportTasksToExcel() {
       hoursByList[liste].heures += h;
     });
 
+    // ── Récupère estimations impératifs ──
+    const impEstimates = [];
+    for (let i = 0; i < 3; i++) {
+      const text = document.getElementById("imp-input-" + i)?.value?.trim();
+      const done = document.getElementById("imp-item-" + i)?.classList.contains("done");
+      const est = parseFloat(document.getElementById("imp-hours-" + i)?.value) || 0;
+      const real = text ? (Object.entries(hoursMap).find(([k]) => {
+        const t = todoTasks.find(t => t.id === k);
+        return t?.title?.toLowerCase() === text?.toLowerCase();
+      })?.[1] || 0) : 0;
+      if (text) impEstimates.push({ label: "A"+(i+1), text, est, real, done });
+    }
+
     // ── Onglet Synthèse ──
     const synthData = [
       ["Reporting d'activité — MonITinéraire"],
@@ -3124,6 +3251,16 @@ async function exportTasksToExcel() {
       ["Taux de complétion", total > 0 ? Math.round(terminees.length/total*100)+"%" : "0%"],
       ["Temps total saisi (h)", totalH],
       [],
+      ["IMPÉRATIFS DU JOUR — ESTIMÉ vs RÉALISÉ", "", "", ""],
+      ["", "Tâche", "Estimé (h)", "Réalisé (h)", "Écart (h)"],
+      ...impEstimates.map(imp => [
+        imp.label + (imp.done ? " ✓" : ""),
+        imp.text,
+        imp.est,
+        imp.real,
+        imp.real > 0 ? Math.round((imp.real - imp.est) * 100) / 100 : ""
+      ]),
+      [],
       ["TEMPS PAR LISTE", "", ""],
       ["Liste", "Nb tâches", "Temps (h)"],
       ...Object.entries(hoursByList).map(([liste, data]) => [
@@ -3133,7 +3270,7 @@ async function exportTasksToExcel() {
       ["TOTAL", total, totalH],
     ];
     const wsSynth = XLSX.utils.aoa_to_sheet(synthData);
-    wsSynth['!cols'] = [{wch:35},{wch:15},{wch:12}];
+    wsSynth['!cols'] = [{wch:10},{wch:40},{wch:12},{wch:12},{wch:10}];
     XLSX.utils.book_append_sheet(wb, wsSynth, "Synthèse");
 
     // ── Onglet En cours ──
