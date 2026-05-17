@@ -2166,6 +2166,11 @@ function onEmailDragStart(e, subject) {
   e.dataTransfer.effectAllowed = "move";
 }
 
+function onAssignedDragStart(e, text) {
+  draggedTask = { id: "assigned_" + Date.now(), text, q: null };
+  e.dataTransfer.effectAllowed = "move";
+}
+
 let pomoTaskText = "";
 function setPomoTask(text) {
   pomoTaskText = text;
@@ -2487,7 +2492,7 @@ async function loadAssigned() {
         const hasHoursA = savedHoursA !== "";
         return `<div class="assigned-item${isImportant?' important':''}" draggable="true"
           data-text="${escHtml(text)}"
-          ondragstart="draggedTask={id:'assigned_'+Date.now(),text:this.dataset.text,q:null}; event.dataTransfer.effectAllowed='move';">
+          ondragstart="onAssignedDragStart(event, '${st}')">
           ${isImportant ? '<span style="font-size:12px;flex-shrink:0;">⭐</span>' : ''}
           <div class="assigned-item-body">
             <div class="assigned-item-title">${escHtml(text)}</div>
@@ -2500,7 +2505,7 @@ async function loadAssigned() {
             </div>
           </div>
           <div class="assigned-item-btns">
-            <button class="assigned-item-btn" title="Assigner comme impératif" onclick="assignImperatif('${st}')">🎯</button>
+            <button class="assigned-item-btn" title="Glisser vers A1/A2/A3 ou cliquer pour assigner" onclick="assignImperatif('${st}')">🎯</button>
             <button class="assigned-item-btn" title="Pomodoro" onclick="setPomoTask('${st}')">🍅</button>
           </div>
         </div>`;
@@ -2769,21 +2774,39 @@ async function exportTasksToExcel() {
     const todayFile = new Date().toISOString().slice(0,10);
     const totalH = Object.values(hoursMap).reduce((a,b) => a + (parseFloat(b)||0), 0);
 
+    // ── Calcul temps par liste ──
+    const hoursByList = {};
+    [...enCours, ...terminees].forEach(row => {
+      const liste = row["Liste"] || "Sans liste";
+      const h = parseFloat(row["Temps (h)"]) || 0;
+      if (!hoursByList[liste]) hoursByList[liste] = { taches: 0, heures: 0 };
+      hoursByList[liste].taches++;
+      hoursByList[liste].heures += h;
+    });
+
     // ── Onglet Synthèse ──
     const synthData = [
       ["Reporting d'activité — MonITinéraire"],
       ["Généré le", today],
       ["Collaborateur", "Eric Baiamonte"],
       [],
-      ["SYNTHÈSE", ""],
+      ["SYNTHÈSE GLOBALE", ""],
       ["Total tâches", total],
       ["Tâches en cours", enCours.length],
       ["Tâches terminées", terminees.length],
       ["Taux de complétion", total > 0 ? Math.round(terminees.length/total*100)+"%" : "0%"],
       ["Temps total saisi (h)", totalH],
+      [],
+      ["TEMPS PAR LISTE", "", ""],
+      ["Liste", "Nb tâches", "Temps (h)"],
+      ...Object.entries(hoursByList).map(([liste, data]) => [
+        liste, data.taches, data.heures
+      ]),
+      [],
+      ["TOTAL", total, totalH],
     ];
     const wsSynth = XLSX.utils.aoa_to_sheet(synthData);
-    wsSynth['!cols'] = [{wch:30},{wch:25}];
+    wsSynth['!cols'] = [{wch:35},{wch:15},{wch:12}];
     XLSX.utils.book_append_sheet(wb, wsSynth, "Synthèse");
 
     // ── Onglet En cours ──
