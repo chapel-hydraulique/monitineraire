@@ -3162,6 +3162,16 @@ function importHoursFromJSON() {
 // ════════════════════════════════════════════════════════════════
 //  EXPORT EXCEL
 // ════════════════════════════════════════════════════════════════
+function extractHoursFromTask(t, hoursMap) {
+  // 1. Cherche dans localStorage (clé = ID tâche)
+  if (hoursMap[t.id] !== undefined && hoursMap[t.id] !== "") return hoursMap[t.id];
+  // 2. Cherche dans la note de la tâche [MonITinéraire] Temps saisi : Xh
+  const body = t.body?.content || "";
+  const match = body.match(/\[MonITin[eé]raire\]\s*Temps saisi\s*:\s*([\d.]+)h/i);
+  if (match) return parseFloat(match[1]);
+  return "";
+}
+
 async function exportTasksToExcel() {
   const btn = document.getElementById("export-btn");
   btn.textContent = "⏳ Export…";
@@ -3181,7 +3191,7 @@ async function exportTasksToExcel() {
         while (nextLink) {
           const data = await graphGet(nextLink.startsWith('https') ? nextLink.replace('https://graph.microsoft.com/v1.0','') : nextLink);
           (data.value || []).forEach(t => {
-            const hours = hoursMap[t.id] !== undefined ? hoursMap[t.id] : "";
+            const hours = extractHoursFromTask(t, hoursMap);
             const dateCreation = t.createdDateTime ? new Date(t.createdDateTime).toLocaleDateString("fr-FR") : "";
             const importance = t.importance === 'high' ? 'Haute' : t.importance === 'low' ? 'Basse' : 'Normale';
             enCours.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": "", "Temps (h)": hours });
@@ -3193,7 +3203,7 @@ async function exportTasksToExcel() {
         while (nextLink2) {
           const data2 = await graphGet(nextLink2.startsWith('https') ? nextLink2.replace('https://graph.microsoft.com/v1.0','') : nextLink2);
           (data2.value || []).forEach(t => {
-            const hours = hoursMap[t.id] !== undefined ? hoursMap[t.id] : "";
+            const hours = extractHoursFromTask(t, hoursMap);
             const dateCreation = t.createdDateTime ? new Date(t.createdDateTime).toLocaleDateString("fr-FR") : "";
             const dateRealisation = t.completedDateTime
               ? new Date(t.completedDateTime.dateTime || t.completedDateTime).toLocaleDateString("fr-FR") : "";
