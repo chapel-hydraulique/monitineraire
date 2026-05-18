@@ -3064,10 +3064,8 @@ async function saveHoursToToDo(taskId, hours) {
         const etag = detailsResp.headers.get("ETag") || "*";
         const existingNotes = details.description || "";
         // Remplace ou ajoute la ligne temps
-        const newNotes = existingNotes.replace(/\[MonITin[eé]raire\].*
-?/g, "").trim()
-          + `
-[MonITinéraire] Temps saisi : ${hours}h`;
+        const newNotes = existingNotes.replace(/\[MonITin.raire\][^\n]*/g, "").trim()
+          + "\n[MonITin\u00e9raire] Temps saisi : " + hours + "h";
         await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`, {
           method: "PATCH",
           headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", "If-Match": etag },
