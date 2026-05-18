@@ -2382,6 +2382,61 @@ function setPomoTask(text) {
   showNotif("🍅 Tâche définie pour le Pomodoro");
 }
 
+async function completeAssignedItem(btn, taskId, listId, listName) {
+  const item = btn.closest(".assigned-item");
+  if (!item) return;
+
+  // Style immédiat
+  item.style.opacity = "0.4";
+  item.style.textDecoration = "line-through";
+  showNotif("✅ Marquage en cours…");
+
+  try {
+    const token = await acquireToken();
+    if (!token) throw new Error("Non authentifié");
+
+    let success = false;
+
+    if (listId) {
+      // Tâche To Do (Planifié)
+      const r = await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", completedDateTime: { dateTime: new Date().toISOString(), timeZone: "UTC" } })
+      });
+      success = r.ok;
+    } else {
+      // Tâche Planner
+      const r = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", "If-Match": "*" },
+        body: JSON.stringify({ percentComplete: 100 })
+      });
+      success = r.ok;
+    }
+
+    if (success) {
+      showNotif("✅ Tâche terminée !");
+      setTimeout(() => {
+        item.style.transition = "all 0.4s";
+        item.style.opacity = "0";
+        item.style.maxHeight = "0";
+        item.style.padding = "0";
+        item.style.margin = "0";
+        setTimeout(() => item.remove(), 400);
+      }, 1500);
+    } else {
+      item.style.opacity = "1";
+      item.style.textDecoration = "none";
+      showNotif("❌ Erreur lors du marquage");
+    }
+  } catch(e) {
+    item.style.opacity = "1";
+    item.style.textDecoration = "none";
+    showNotif("❌ Erreur : " + e.message);
+  }
+}
+
 async function completeTodoItem(btn, taskId, listId) {
   const item = btn.closest(".todo-item");
   if (!item || item.classList.contains("completed")) return;
@@ -2769,6 +2824,7 @@ async function loadAssigned() {
             </div>
           </div>
           <div class="assigned-item-btns">
+            <button class="assigned-item-btn" title="Marquer comme terminée" onclick="completeAssignedItem(this, '${t.id}', '${t.listId || ''}', '${listName}')">✓</button>
             <button class="assigned-item-btn" title="Glisser vers A1/A2/A3 ou cliquer pour assigner" onclick="assignImperatif('${st}')">🎯</button>
             <button class="assigned-item-btn" title="Pomodoro" onclick="setPomoTask('${st}')">🍅</button>
           </div>
