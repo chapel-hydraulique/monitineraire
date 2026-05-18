@@ -2821,6 +2821,7 @@ async function loadAssigned() {
         const savedHoursA = loadTaskHours(t.id || text);
         const hasHoursA = savedHoursA !== "";
         return `<div class="assigned-item${isImportant?' important':''}" draggable="true"
+          data-id="${t.id || ''}"
           data-text="${escHtml(text)}"
           ondragstart="onAssignedDragStart(event, '${st}')">
           ${isImportant ? '<span style="font-size:12px;flex-shrink:0;">⭐</span>' : ''}
@@ -3034,25 +3035,47 @@ function saveTaskHours(taskId, hours) {
 }
 
 async function saveHoursToToDo(taskId, hours) {
-  // Trouve le listId depuis la liste To Do affichée
-  const item = document.querySelector(`.todo-item[data-id="${taskId}"]`);
-  const listId = item?.dataset?.listId;
-  if (!listId) return;
-
   try {
     const token = await acquireToken();
     if (!token) return;
-    await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        body: {
-          contentType: "text",
-          content: `[MonITinéraire] Temps saisi : ${hours}h`
-        }
-      })
-    });
-    showNotif(`💾 ${hours}h sauvegardé dans To Do`);
+
+    // 1. Cherche dans To Do (todo-item avec data-list-id)
+    const todoItem = document.querySelector(`.todo-item[data-id="${taskId}"]`);
+    const listId = todoItem?.dataset?.listId;
+    if (listId) {
+      await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ body: { contentType: "text", content: `[MonITinéraire] Temps saisi : ${hours}h` } })
+      });
+      showNotif(`💾 ${hours}h sauvegardé dans To Do`);
+      return;
+    }
+
+    // 2. Cherche dans Affectées à moi (assigned-item)
+    const assignedItem = document.querySelector(`.assigned-item[data-id="${taskId}"]`);
+    if (assignedItem) {
+      // Tâche Planner — sauvegarde dans les notes via planner/tasks/{id}/details
+      const detailsResp = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`, {
+        headers: { Authorization: "Bearer " + token }
+      });
+      if (detailsResp.ok) {
+        const details = await detailsResp.json();
+        const etag = detailsResp.headers.get("ETag") || "*";
+        const existingNotes = details.description || "";
+        // Remplace ou ajoute la ligne temps
+        const newNotes = existingNotes.replace(/\[MonITin[eé]raire\].*
+?/g, "").trim()
+          + `
+[MonITinéraire] Temps saisi : ${hours}h`;
+        await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`, {
+          method: "PATCH",
+          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", "If-Match": etag },
+          body: JSON.stringify({ description: newNotes.trim() })
+        });
+        showNotif(`💾 ${hours}h sauvegardé dans Planner`);
+      }
+    }
   } catch(e) {
     console.warn("Sauvegarde Graph échouée:", e);
   }
