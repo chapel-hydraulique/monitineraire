@@ -677,7 +677,8 @@
   .assigned-item-list { font-size: 10px; color: #9aa0bc; font-family: var(--font-mono); }
   .assigned-item-btns { display: flex; flex-direction: column; gap: 4px; opacity: 0; transition: opacity 0.2s; }
   .assigned-item:hover .assigned-item-btns { opacity: 1; }
-  .assigned-item-btn { background: none; border: none; cursor: pointer; font-size: 12px; padding: 0; }
+  .assigned-item-btn { background: none; border: none; cursor: pointer; font-size: 13px; padding: 0; color: #c8cfe8; transition: color 0.2s; }
+  .assigned-item-btn:hover { color: #fff; }
   .assigned-item .todo-item-hours { opacity: 1 !important; display: flex !important; }
 
   .todo-list { display: flex; flex-direction: column; gap: 6px; }
@@ -2406,13 +2407,23 @@ async function completeAssignedItem(btn, taskId, listId, listName) {
       });
       success = r.ok;
     } else {
-      // Tâche Planner
-      const r = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json", "If-Match": "*" },
-        body: JSON.stringify({ percentComplete: 100 })
-      });
-      success = r.ok;
+      // Tâche Planner — récupère d'abord l'eTag requis
+      try {
+        const taskResp = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
+          headers: { Authorization: "Bearer " + token }
+        });
+        const etag = taskResp.headers.get("ETag") || taskResp.headers.get("etag") || "*";
+        const r = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+            "If-Match": etag
+          },
+          body: JSON.stringify({ percentComplete: 100 })
+        });
+        success = r.ok;
+      } catch(pe) { success = false; }
     }
 
     if (success) {
