@@ -3975,7 +3975,7 @@ async function exportTasksToExcel(params = null) {
             const hours = extractHoursFromTask(t, hoursMap);
             const dateCreation = t.createdDateTime ? new Date(t.createdDateTime) : null;
             const importance = t.importance === 'high' ? 'Haute' : t.importance === 'low' ? 'Basse' : 'Normale';
-            if (params.statusInProgress && inPeriod(dateCreation))
+            if (params.statusInProgress)
               enCours.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": null, "Temps (h)": hours });
           });
           nextLink = data['@odata.nextLink']?.replace('https://graph.microsoft.com/v1.0','') || null;
@@ -4026,7 +4026,7 @@ async function exportTasksToExcel(params = null) {
         if (t.percentComplete === 100 || t.completedDateTime) {
           if (params.statusDone && params.lists.includes("planner") && inPeriod(row["Date réalisation"] || row["Date création"])) terminees.push(row);
         } else {
-          if (params.statusInProgress && params.lists.includes("planner")) enCours.push(row);
+          if (params.statusInProgress && params.lists.includes("planner")) enCours.push(row);  // pas de filtre date pour en cours
         }
       });
     } catch(e) {}
