@@ -3955,8 +3955,16 @@ async function exportTasksToExcel(params = null) {
   function inPeriod(dateVal) {
     if (!dateVal) return true;
     const d = dateVal instanceof Date ? dateVal : new Date(dateVal);
-    if (params.from && d < params.from) return false;
-    if (params.to && d > params.to) return false;
+    // Comparaison au niveau du jour (ignore l'heure)
+    const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    if (params.from) {
+      const f = new Date(params.from.getFullYear(), params.from.getMonth(), params.from.getDate());
+      if (dDay < f) return false;
+    }
+    if (params.to) {
+      const t = new Date(params.to.getFullYear(), params.to.getMonth(), params.to.getDate());
+      if (dDay > t) return false;
+    }
     return true;
   }
 
@@ -4007,8 +4015,25 @@ async function exportTasksToExcel(params = null) {
           const hours = extractHoursFromTask(t, hoursMap);
           const dateCreation = t.createdDateTime ? new Date(t.createdDateTime) : null;
           const dateRealisation = t.completedDateTime ? new Date(t.completedDateTime.dateTime || t.completedDateTime) : null;
-          if (params.lists.includes("journal") && params.optJournal && params.statusDone && inPeriod(dateRealisation || dateCreation))
-            terminees.push({ "Liste": "Journal SI", "Titre": t.title || "", "Importance": "Normale", "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours });
+          if (params.lists.includes("journal") && params.optJournal && params.statusDone) {
+            // Pour Journal SI : filtre sur date création OU réalisation
+            const journalDate = dateRealisation || dateCreation;
+            // Comparaison souple sur le jour (ignore l'heure)
+            let inRange = true;
+            if (params.from || params.to) {
+              const d = journalDate instanceof Date ? journalDate : new Date(journalDate);
+              const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+              if (params.from) {
+                const f = new Date(params.from.getFullYear(), params.from.getMonth(), params.from.getDate());
+                if (dDay < f) inRange = false;
+              }
+              if (params.to) {
+                const t2 = new Date(params.to.getFullYear(), params.to.getMonth(), params.to.getDate());
+                if (dDay > t2) inRange = false;
+              }
+            }
+            if (inRange) terminees.push({ "Liste": "Journal SI", "Titre": t.title || "", "Importance": "Normale", "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours });
+          }
         });
       }
     } catch(e) {}
