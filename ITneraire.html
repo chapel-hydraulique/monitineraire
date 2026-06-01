@@ -983,6 +983,108 @@
     font-family: var(--font-mono); flex-shrink: 0;
   }
 
+  /* ── JOURNAL D'ACTIVITÉ ── */
+  .journal-overlay {
+    position: fixed; inset: 0;
+    background: #000a;
+    display: none; align-items: flex-start; justify-content: center;
+    z-index: 1300;
+    backdrop-filter: blur(6px);
+    padding-top: 70px;
+  }
+  .journal-overlay.active { display: flex; }
+
+  .journal-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    width: 520px; max-width: 95vw;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+  }
+
+  .journal-header {
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(135deg, #1e2230, #252a3a);
+  }
+
+  .journal-header h3 {
+    font-family: var(--font-head); font-size: 16px; font-weight: 700;
+    color: var(--text);
+  }
+
+  .journal-header span {
+    font-size: 11px; color: var(--text3); font-family: var(--font-mono);
+  }
+
+  .journal-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* Types */
+  .journal-types {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+
+  .journal-type-btn {
+    padding: 7px 14px; border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text2); font-size: 12px;
+    cursor: pointer; transition: all 0.2s;
+    font-family: var(--font-body);
+  }
+  .journal-type-btn:hover { border-color: var(--accent); color: var(--text); }
+  .journal-type-btn.selected { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+  .journal-field { display: flex; flex-direction: column; gap: 6px; }
+  .journal-label { font-size: 11px; color: var(--text3); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 1px; }
+
+  .journal-input {
+    padding: 10px 14px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text);
+    font-family: var(--font-body); font-size: 13px;
+    outline: none; transition: border-color 0.2s; width: 100%;
+  }
+  .journal-input:focus { border-color: var(--accent); }
+
+  .journal-row { display: flex; gap: 12px; }
+
+  .journal-footer {
+    padding: 14px 22px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 8px; justify-content: space-between; align-items: center;
+  }
+
+  .journal-history-btn {
+    font-size: 12px; color: var(--text3); cursor: pointer;
+    background: none; border: none; font-family: var(--font-body);
+    transition: color 0.2s;
+  }
+  .journal-history-btn:hover { color: var(--accent); }
+
+  /* Historique */
+  .journal-history {
+    max-height: 200px; overflow-y: auto;
+    border-top: 1px solid var(--border);
+    padding: 12px 22px;
+    display: none;
+  }
+  .journal-history.visible { display: block; }
+
+  .journal-entry {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .journal-entry:last-child { border-bottom: none; }
+  .journal-entry-type { font-size: 16px; flex-shrink: 0; }
+  .journal-entry-body { flex: 1; min-width: 0; }
+  .journal-entry-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .journal-entry-meta { font-size: 10px; color: var(--text3); font-family: var(--font-mono); }
+
   /* ── NOTIFICATION ── */
   #notif {
     position: fixed; top: 70px; right: 20px;
@@ -1073,6 +1175,14 @@
         <path d="M8 16H3v5"/>
       </svg>
       Synchroniser
+    </button>
+    <button class="sync-btn" onclick="openJournal()" title="Saisie rapide d'activité" style="border-color: #7c5cf7; color: #7c5cf7;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="16"/>
+        <line x1="8" y1="12" x2="16" y2="12"/>
+      </svg>
+      Activité
     </button>
     <button class="sync-btn" id="export-btn" onclick="exportTasksToExcel()" title="Exporter les tâches To Do en Excel">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1426,6 +1536,73 @@
     </div>
     <input class="pomo-picker-search" id="pomo-picker-search" placeholder="Rechercher une tâche…" oninput="filterPomoTasks(this.value)">
     <div class="pomo-picker-list" id="pomo-picker-list"></div>
+  </div>
+</div>
+
+<!-- ══ JOURNAL D'ACTIVITÉ ══ -->
+<div class="journal-overlay" id="journal-overlay" onclick="if(event.target===this) closeJournal()">
+  <div class="journal-modal">
+
+    <div class="journal-header">
+      <h3>⚡ Saisie rapide d'activité</h3>
+      <span id="journal-datetime"></span>
+      <button onclick="closeJournal()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;line-height:1;">×</button>
+    </div>
+
+    <div class="journal-body">
+
+      <!-- Type d'activité -->
+      <div class="journal-field">
+        <div class="journal-label">Type d'activité</div>
+        <div class="journal-types">
+          <button class="journal-type-btn selected" data-type="📞 Appel" onclick="selectJournalType(this)">📞 Appel</button>
+          <button class="journal-type-btn" data-type="💬 Échange" onclick="selectJournalType(this)">💬 Échange</button>
+          <button class="journal-type-btn" data-type="✉️ Email" onclick="selectJournalType(this)">✉️ Email</button>
+          <button class="journal-type-btn" data-type="🔧 Intervention" onclick="selectJournalType(this)">🔧 Intervention</button>
+          <button class="journal-type-btn" data-type="📋 Réunion" onclick="selectJournalType(this)">📋 Réunion</button>
+          <button class="journal-type-btn" data-type="📝 Autre" onclick="selectJournalType(this)">📝 Autre</button>
+        </div>
+      </div>
+
+      <!-- Sujet -->
+      <div class="journal-field">
+        <div class="journal-label">Sujet *</div>
+        <input class="journal-input" id="journal-sujet" placeholder="Ex: Point Divalto avec Jean-Louis, Ticket GLPI #558…" onkeydown="if(event.key==='Enter') document.getElementById('journal-avec').focus()">
+      </div>
+
+      <!-- Avec + Temps -->
+      <div class="journal-row">
+        <div class="journal-field" style="flex:2;">
+          <div class="journal-label">Avec (optionnel)</div>
+          <input class="journal-input" id="journal-avec" placeholder="Ex: Félix, Christelle, Client…" onkeydown="if(event.key==='Enter') document.getElementById('journal-temps').focus()">
+        </div>
+        <div class="journal-field" style="flex:1;">
+          <div class="journal-label">Temps passé (h) *</div>
+          <input class="journal-input" id="journal-temps" type="number" min="0.25" max="24" step="0.25" placeholder="0.5" onkeydown="if(event.key==='Enter') saveJournalEntry()">
+        </div>
+      </div>
+
+      <!-- Note optionnelle -->
+      <div class="journal-field">
+        <div class="journal-label">Note (optionnel)</div>
+        <input class="journal-input" id="journal-note" placeholder="Contexte, résultat, suite à donner…" onkeydown="if(event.key==='Enter') saveJournalEntry()">
+      </div>
+
+    </div>
+
+    <!-- Historique du jour -->
+    <div class="journal-history" id="journal-history"></div>
+
+    <div class="journal-footer">
+      <button class="journal-history-btn" onclick="toggleJournalHistory()">📋 Historique du jour</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" onclick="closeJournal()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveJournalEntry()" style="background:#7c5cf7;box-shadow:0 4px 16px #7c5cf740;">
+          ✅ Enregistrer
+        </button>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -3009,6 +3186,175 @@ function loadingHTML() {
 }
 
 // ════════════════════════════════════════════════════════════════
+//  JOURNAL D'ACTIVITÉ RAPIDE
+// ════════════════════════════════════════════════════════════════
+let journalSelectedType = "📞 Appel";
+
+function openJournal() {
+  // Mise à jour date/heure
+  const now = new Date();
+  const dt = now.toLocaleDateString("fr-FR", {weekday:"long", day:"numeric", month:"long"})
+    + " — " + now.toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"});
+  document.getElementById("journal-datetime").textContent = dt;
+  // Reset formulaire
+  document.getElementById("journal-sujet").value = "";
+  document.getElementById("journal-avec").value = "";
+  document.getElementById("journal-temps").value = "";
+  document.getElementById("journal-note").value = "";
+  document.getElementById("journal-history").classList.remove("visible");
+  document.getElementById("journal-overlay").classList.add("active");
+  setTimeout(() => document.getElementById("journal-sujet").focus(), 50);
+  refreshJournalHistory();
+}
+
+function closeJournal() {
+  document.getElementById("journal-overlay").classList.remove("active");
+}
+
+function selectJournalType(btn) {
+  document.querySelectorAll(".journal-type-btn").forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+  journalSelectedType = btn.dataset.type;
+}
+
+async function saveJournalEntry() {
+  const sujet = document.getElementById("journal-sujet").value.trim();
+  const avec  = document.getElementById("journal-avec").value.trim();
+  const temps = parseFloat(document.getElementById("journal-temps").value) || 0;
+  const note  = document.getElementById("journal-note").value.trim();
+
+  if (!sujet) { showNotif("⚠️ Le sujet est obligatoire"); return; }
+  if (!temps) { showNotif("⚠️ Le temps est obligatoire"); return; }
+
+  const now = new Date();
+  const entry = {
+    id: "jrn_" + Date.now(),
+    type: journalSelectedType,
+    sujet,
+    avec,
+    temps,
+    note,
+    date: now.toISOString(),
+    dateStr: now.toLocaleDateString("fr-FR", {day:"2-digit", month:"2-digit", year:"numeric"}),
+    heureStr: now.toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"})
+  };
+
+  // 1. Sauvegarde localStorage
+  saveJournalLocal(entry);
+
+  // 2. Créer tâche terminée dans To Do (liste "Journal SI")
+  await createJournalToDo(entry);
+
+  // 3. Reset + feedback
+  showNotif(`✅ ${journalSelectedType} enregistré — ${temps}h`);
+  refreshJournalHistory();
+  document.getElementById("journal-sujet").value = "";
+  document.getElementById("journal-avec").value = "";
+  document.getElementById("journal-temps").value = "";
+  document.getElementById("journal-note").value = "";
+  document.getElementById("journal-history").classList.add("visible");
+  document.getElementById("journal-sujet").focus();
+}
+
+function saveJournalLocal(entry) {
+  try {
+    const key = "mit_journal";
+    const all = JSON.parse(localStorage.getItem(key) || "[]");
+    all.unshift(entry);
+    localStorage.setItem(key, JSON.stringify(all.slice(0, 200))); // max 200 entrées
+  } catch(e) {}
+}
+
+function getJournalLocal() {
+  try { return JSON.parse(localStorage.getItem("mit_journal") || "[]"); } catch(e) { return []; }
+}
+
+async function createJournalToDo(entry) {
+  try {
+    const token = await acquireToken();
+    if (!token) return;
+
+    // Trouve ou crée la liste "Journal SI"
+    let listId = localStorage.getItem("mit_journal_list_id");
+    if (!listId) {
+      const lists = await graphGet("/me/todo/lists?$top=50");
+      const existing = (lists.value || []).find(l => l.displayName === "Journal SI");
+      if (existing) {
+        listId = existing.id;
+      } else {
+        // Crée la liste
+        const r = await fetch("https://graph.microsoft.com/v1.0/me/todo/lists", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+          body: JSON.stringify({ displayName: "Journal SI" })
+        });
+        const newList = await r.json();
+        listId = newList.id;
+      }
+      localStorage.setItem("mit_journal_list_id", listId);
+    }
+
+    // Compose le titre et la note
+    const title = `${entry.type} — ${entry.sujet}`;
+    const noteLines = [
+      `Type : ${entry.type}`,
+      `Date : ${entry.dateStr} à ${entry.heureStr}`,
+      entry.avec ? `Avec : ${entry.avec}` : null,
+      `[MonITinéraire] Temps saisi : ${entry.temps}h`,
+      entry.note ? `Note : ${entry.note}` : null,
+    ].filter(Boolean).join("
+");
+
+    // Crée la tâche directement en terminée
+    await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        status: "completed",
+        completedDateTime: { dateTime: new Date().toISOString(), timeZone: "UTC" },
+        body: { contentType: "text", content: noteLines }
+      })
+    });
+  } catch(e) {
+    console.warn("Journal ToDo création échouée:", e);
+  }
+}
+
+function refreshJournalHistory() {
+  const entries = getJournalLocal();
+  const today = new Date().toLocaleDateString("fr-FR", {day:"2-digit", month:"2-digit", year:"numeric"});
+  const todayEntries = entries.filter(e => e.dateStr === today);
+
+  const container = document.getElementById("journal-history");
+  if (!todayEntries.length) {
+    container.innerHTML = `<div style="text-align:center;padding:16px;color:var(--text3);font-size:12px;">Aucune activité saisie aujourd'hui</div>`;
+    return;
+  }
+
+  const totalH = todayEntries.reduce((a,b) => a + (b.temps||0), 0);
+  container.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div style="font-size:11px;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:1px;">Aujourd'hui — ${todayEntries.length} entrées</div>
+      <div style="font-size:12px;color:var(--accent);font-family:var(--font-mono);font-weight:600;">${totalH.toFixed(2)}h tracées</div>
+    </div>` +
+    todayEntries.map(e => `
+      <div class="journal-entry">
+        <span class="journal-entry-type">${e.type.split(" ")[0]}</span>
+        <div class="journal-entry-body">
+          <div class="journal-entry-title">${escHtml(e.sujet)}</div>
+          <div class="journal-entry-meta">${e.heureStr}${e.avec ? ' · ' + escHtml(e.avec) : ''} · ${e.temps}h</div>
+        </div>
+      </div>`).join("");
+}
+
+function toggleJournalHistory() {
+  const h = document.getElementById("journal-history");
+  h.classList.toggle("visible");
+  refreshJournalHistory();
+}
+
+// ════════════════════════════════════════════════════════════════
 //  HEURES PAR TÂCHE
 // ════════════════════════════════════════════════════════════════
 
@@ -3302,6 +3648,20 @@ async function exportTasksToExcel() {
         }
       } catch(e) {}
     }
+
+    // ── Tâches Journal SI ──
+    try {
+      const journalListId = localStorage.getItem("mit_journal_list_id");
+      if (journalListId) {
+        const data = await graphGet(`/me/todo/lists/${journalListId}/tasks?$filter=status eq 'completed'&$top=200`);
+        (data.value || []).forEach(t => {
+          const hours = extractHoursFromTask(t, hoursMap);
+          const dateCreation = t.createdDateTime ? new Date(t.createdDateTime) : null;
+          const dateRealisation = t.completedDateTime ? new Date(t.completedDateTime.dateTime || t.completedDateTime) : null;
+          terminees.push({ "Liste": "Journal SI", "Titre": t.title || "", "Importance": "Normale", "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours });
+        });
+      }
+    } catch(e) {}
 
     // ── Tâches Planner (Affectées à moi par Félix) ──
     try {
