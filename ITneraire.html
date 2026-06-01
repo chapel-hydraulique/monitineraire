@@ -2646,18 +2646,12 @@ async function loadToDo() {
       return;
     }
 
-    // Filtre les listes selon les paramètres du panneau
-    const wantTaches   = params.lists.includes("taches");
-    const wantImportant= params.lists.includes("important");
-    const wantPlanifie = params.lists.includes("planifie");
-
-    const filteredLists = (allLists.value || []).filter(l => {
+    // Uniquement les listes "Tâches" et "Important" pour l'affichage
+    const filteredLists = (lists.value || []).filter(l => {
       const name = l.displayName.toLowerCase();
       const wkn = l.wellknownListName || "";
-      if (wantTaches    && (wkn === "defaultList" || name === "tâches" || name === "tasks")) return true;
-      if (wantImportant && (wkn === "important" || name === "important")) return true;
-      if (wantPlanifie  && (wkn === "planned" || name.includes("planif"))) return true;
-      return false;
+      return (wkn === "defaultList" || name === "tâches" || name === "tasks" ||
+              wkn === "important" || name === "important");
     });
 
     let allTasks = [];
@@ -3971,7 +3965,7 @@ async function exportTasksToExcel(params = null) {
     const allLists = await graphGet(`/me/todo/lists?$top=50`);
     let enCours = [], terminees = [];
 
-    for (const list of (lists.value || [])) {
+    for (const list of (allLists.value || [])) {
       try {
         // Tâches en cours
         let nextLink = `/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=100`;
