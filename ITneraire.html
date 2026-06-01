@@ -2839,6 +2839,14 @@ async function completeAssignedItem(btn, taskId, listId, listName) {
     const token = await acquireToken();
     if (!token) throw new Error("Non authentifié");
 
+    // Sauvegarde les heures AVANT de clôturer
+    const hoursInput = item.querySelector("input[type='number']");
+    const hours = hoursInput ? parseFloat(hoursInput.value) : null;
+    if (hours && hours > 0) {
+      clearTimeout(hoursSaveTimer);
+      await saveHoursToToDo(taskId, hours);
+    }
+
     let success = false;
 
     if (listId) {
@@ -2903,6 +2911,14 @@ async function completeTodoItem(btn, taskId, listId) {
   try {
     const token = await acquireToken();
     if (!token) throw new Error("Non authentifié");
+
+    // Sauvegarde les heures en cours AVANT de clôturer
+    const hoursInput = item.querySelector("input[type='number']");
+    const hours = hoursInput ? parseFloat(hoursInput.value) : null;
+    if (hours && hours > 0) {
+      clearTimeout(hoursSaveTimer); // annule le debounce en cours
+      await saveHoursToToDo(taskId, hours); // sauvegarde immédiate
+    }
 
     const r = await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
       method: "PATCH",
