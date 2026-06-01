@@ -1272,6 +1272,15 @@
       </svg>
       Synchroniser
     </button>
+    <button class="sync-btn" onclick="openReportingPanel()" title="Générer le reporting mensuel" style="border-color: #f7a94f; color: #f7a94f;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14,2 14,8 20,8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      Reporting
+    </button>
     <button class="sync-btn" onclick="openJournal()" title="Saisie rapide d'activité" style="border-color: #7c5cf7; color: #7c5cf7;">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <circle cx="12" cy="12" r="10"/>
@@ -1632,6 +1641,83 @@
     </div>
     <input class="pomo-picker-search" id="pomo-picker-search" placeholder="Rechercher une tâche…" oninput="filterPomoTasks(this.value)">
     <div class="pomo-picker-list" id="pomo-picker-list"></div>
+  </div>
+</div>
+
+<!-- ══ REPORTING PANEL ══ -->
+<div class="export-overlay" id="reporting-overlay" onclick="if(event.target===this) closeReportingPanel()">
+  <div class="export-modal" style="width:480px;">
+    <div class="export-header">
+      <h3>📋 Reporting mensuel</h3>
+      <button onclick="closeReportingPanel()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div class="export-body">
+
+      <!-- Mois -->
+      <div>
+        <div class="export-section-title">📅 Mois à générer</div>
+        <div class="export-date-row">
+          <select id="reporting-month" class="export-date-input" style="flex:1;">
+            <option value="1">Janvier</option>
+            <option value="2">Février</option>
+            <option value="3">Mars</option>
+            <option value="4">Avril</option>
+            <option value="5">Mai</option>
+            <option value="6">Juin</option>
+            <option value="7">Juillet</option>
+            <option value="8">Août</option>
+            <option value="9">Septembre</option>
+            <option value="10">Octobre</option>
+            <option value="11">Novembre</option>
+            <option value="12">Décembre</option>
+          </select>
+          <select id="reporting-year" class="export-date-input" style="flex:0.6;">
+          </select>
+        </div>
+      </div>
+
+      <!-- Options -->
+      <div>
+        <div class="export-section-title">⚙️ Contenu</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
+            <input type="checkbox" id="rep-opt-taches" checked style="width:16px;height:16px;accent-color:var(--accent);">
+            Synthèse tâches (To Do + Planner Félix)
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
+            <input type="checkbox" id="rep-opt-reunions" checked style="width:16px;height:16px;accent-color:var(--accent);">
+            Réunions & activités (agenda)
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
+            <input type="checkbox" id="rep-opt-detail" checked style="width:16px;height:16px;accent-color:var(--accent);">
+            Détail tâches terminées
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
+            <input type="checkbox" id="rep-opt-journal" checked style="width:16px;height:16px;accent-color:var(--accent);">
+            Journal SI (appels, échanges…)
+          </label>
+        </div>
+      </div>
+
+      <!-- Info -->
+      <div style="background:#4f8ef710;border:1px solid #4f8ef730;border-radius:8px;padding:12px;font-size:12px;color:var(--text2);line-height:1.6;">
+        ℹ️ Le reporting récupère automatiquement :<br>
+        • Tâches terminées + en cours depuis To Do & Planner<br>
+        • Réunions depuis ton agenda Outlook<br>
+        • Journal SI (appels, échanges saisis)<br>
+        • Calcul automatique des jours travaillés
+      </div>
+
+    </div>
+    <div class="export-footer">
+      <div class="export-summary" id="reporting-summary"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" onclick="closeReportingPanel()">Annuler</button>
+        <button class="btn btn-primary" id="reporting-launch-btn" onclick="launchReporting()" style="background:#f7a94f;box-shadow:0 4px 16px #f7a94f40;color:#1a0a00;">
+          📋 Générer
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -4192,6 +4278,360 @@ async function exportTasksToExcel(params = null) {
     btn.disabled = false;
     btn.classList.remove("syncing");
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  REPORTING MENSUEL
+// ════════════════════════════════════════════════════════════════
+
+function openReportingPanel() {
+  // Init année/mois
+  const now = new Date();
+  const yearSel = document.getElementById("reporting-year");
+  yearSel.innerHTML = "";
+  for (let y = now.getFullYear(); y >= 2024; y--) {
+    const opt = document.createElement("option");
+    opt.value = y; opt.textContent = y;
+    yearSel.appendChild(opt);
+  }
+  // Mois précédent par défaut
+  const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+  const prevYear  = now.getMonth() === 0 ? now.getFullYear()-1 : now.getFullYear();
+  document.getElementById("reporting-month").value = prevMonth;
+  document.getElementById("reporting-year").value  = prevYear;
+  updateReportingSummary();
+  document.getElementById("reporting-overlay").classList.add("active");
+}
+
+function closeReportingPanel() {
+  document.getElementById("reporting-overlay").classList.remove("active");
+}
+
+function updateReportingSummary() {
+  const m = parseInt(document.getElementById("reporting-month").value);
+  const y = parseInt(document.getElementById("reporting-year").value);
+  const mois = ["","Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"][m];
+  document.getElementById("reporting-summary").textContent = `Reporting ${mois} ${y}`;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("reporting-month")?.addEventListener("change", updateReportingSummary);
+  document.getElementById("reporting-year")?.addEventListener("change", updateReportingSummary);
+});
+
+async function launchReporting() {
+  const m = parseInt(document.getElementById("reporting-month").value);
+  const y = parseInt(document.getElementById("reporting-year").value);
+  const opts = {
+    taches:   document.getElementById("rep-opt-taches").checked,
+    reunions: document.getElementById("rep-opt-reunions").checked,
+    detail:   document.getElementById("rep-opt-detail").checked,
+    journal:  document.getElementById("rep-opt-journal").checked,
+  };
+
+  closeReportingPanel();
+  const btn = document.getElementById("reporting-launch-btn");
+  showNotif("📋 Génération du reporting en cours…");
+
+  try {
+    await generateMonthlyReport(m, y, opts);
+  } catch(e) {
+    showNotif("❌ Erreur : " + e.message);
+    console.error(e);
+  }
+}
+
+function getMonthBounds(month, year) {
+  const from = new Date(year, month-1, 1);
+  const to   = new Date(year, month, 0, 23, 59, 59);
+  return { from, to };
+}
+
+function countWorkdays(month, year) {
+  let count = 0;
+  const d = new Date(year, month-1, 1);
+  while (d.getMonth() === month-1) {
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) count++;
+    d.setDate(d.getDate()+1);
+  }
+  return count;
+}
+
+function categoriseReunion(sujet) {
+  const s = (sujet||"").toLowerCase();
+  if (s.includes("félix") || s.includes("felix") || s.includes("point hebdo") || s.includes("tableau de bord")) return "🤝 Point Félix";
+  if (s.includes("recettage") || s.includes("kuser") || s.includes("indisponible")) return "🔧  recettage Divalto Industry";
+  if (s.includes("neskar") && (s.includes("recettage")||s.includes("suivi"))) return "🔧 Projet Divalto Industry";
+  if (s.includes("neskar")) return "🔧 Projet Divalto Industry";
+  if (s.includes("cogouv") || s.includes("copil")) return "🏢 Gouvernance IT";
+  if (s.includes("corim")) return "💻 CORIM";
+  if (s.includes("workshop") || s.includes("génération") || s.includes("generation") || s.includes("cr réunion") || s.includes("cr reunion")) return "📊 ERP";
+  if (s.includes("cbn") || s.includes("surcharge") || s.includes("lecture")) return "📊 ERP";
+  if (s.includes("smtp") || s.includes("notification")) return "🔧 Projet Divalto Industry";
+  if (s.includes("visite") || s.includes("eficia") || s.includes("gtb")) return "🏗️ Infrastructure";
+  if (s.includes("chapel de") || s.includes("selectline")) return "🤝  IT";
+  if (s.includes("informatique") || s.includes("pt mensuel") || s.includes("point mensuel")) return "🤝 Point Mensuel IT";
+  if (s.includes("tel ") || s.includes("téléphonie") || s.includes("telephonie") || s.includes("ip ") || s.includes("voxatic") || s.includes("konica")) return "📡 Téléphonie/Réseau";
+  if (s.includes("portabilit") || s.includes("bouygues")) return "📡 Téléphonie/Réseau";
+  if (s.includes("visio") || s.includes("installation")) return "💻 Infrastructure IT";
+  return "📅 Autre";
+}
+
+function formatLieu(lieu) {
+  if (!lieu) return "—";
+  const l = lieu.toLowerCase();
+  if (l.includes("teams")) return "🖥️ Teams";
+  if (l.includes("salle")) return lieu.replace("(FR)","").trim();
+  if (l.includes("bureau")) return "Bureau";
+  return lieu;
+}
+
+function jouriSemaine(d) {
+  return ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"][d.getDay()];
+}
+
+function fmtDate(d) {
+  if (!d) return "—";
+  if (typeof d === "string") return d;
+  return d.toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit",year:"numeric"});
+}
+
+function fmtTime(dt) {
+  if (!dt) return "";
+  if (dt instanceof Date) return dt.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+  if (typeof dt === "string") return dt.slice(11,16);
+  return String(dt).slice(0,5);
+}
+
+async function generateMonthlyReport(month, year, opts) {
+  const MOIS = ["","Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+  const moisStr = MOIS[month];
+  const { from, to } = getMonthBounds(month, year);
+  const hoursMap = getAllTaskHours();
+  const workdays = countWorkdays(month, year);
+
+  showNotif(`📅 Récupération des données ${moisStr} ${year}…`);
+
+  // ── 1. TÂCHES ──
+  let terminees = [], enCours = [], felix_done = [], felix_encours = [];
+
+  if (opts.taches) {
+    // To Do
+    const allLists = await graphGet(`/me/todo/lists?$top=50`);
+    for (const list of (allLists.value||[])) {
+      const name = list.displayName.toLowerCase();
+      const wkn  = list.wellknownListName||"";
+      const isJournal = name === "journal si";
+      if (!opts.journal && isJournal) continue;
+
+      try {
+        // Terminées du mois
+        let link = `/me/todo/lists/${list.id}/tasks?$filter=status eq 'completed'&$top=100`;
+        while (link) {
+          const data = await graphGet(link.startsWith("https") ? link.replace("https://graph.microsoft.com/v1.0","") : link);
+          (data.value||[]).forEach(t => {
+            const dateReal = t.completedDateTime ? new Date(t.completedDateTime.dateTime||t.completedDateTime) : null;
+            if (!dateReal || dateReal < from || dateReal > to) return;
+            const h = extractHoursFromTask(t, hoursMap);
+            terminees.push({ liste: isJournal ? "Journal SI" : list.displayName, titre: t.title||"", date: dateReal, temps: h||0 });
+          });
+          link = data["@odata.nextLink"]?.replace("https://graph.microsoft.com/v1.0","") || null;
+        }
+        // En cours
+        let link2 = `/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=100`;
+        while (link2) {
+          const data2 = await graphGet(link2.startsWith("https") ? link2.replace("https://graph.microsoft.com/v1.0","") : link2);
+          (data2.value||[]).forEach(t => {
+            enCours.push({ liste: list.displayName, titre: t.title||"", importance: t.importance, temps: extractHoursFromTask(t,hoursMap)||0 });
+          });
+          link2 = data2["@odata.nextLink"]?.replace("https://graph.microsoft.com/v1.0","") || null;
+        }
+      } catch(e) {}
+    }
+
+    // Planner (Félix)
+    try {
+      const planner = await graphGet(`/me/planner/tasks?$top=100`);
+      (planner.value||[]).forEach(t => {
+        const h = hoursMap[t.id]||0;
+        const due = t.dueDateTime ? new Date(t.dueDateTime) : null;
+        if (t.percentComplete === 100 || t.completedDateTime) {
+          const dateReal = t.completedDateTime ? new Date(t.completedDateTime) : null;
+          if (dateReal && dateReal >= from && dateReal <= to) {
+            felix_done.push({ titre: t.title||"", date: dateReal, temps: h, due });
+          }
+        } else {
+          felix_encours.push({ titre: t.title||"", due, statut: t.percentComplete > 0 ? "🔄 En cours" : "❌ Non démarré", temps: h });
+        }
+      });
+    } catch(e) {}
+  }
+
+  // ── 2. RÉUNIONS ──
+  let reunions = [];
+  if (opts.reunions) {
+    showNotif("📅 Récupération de l'agenda…");
+    try {
+      const cal = await graphGet(`/me/calendarView?startDateTime=${from.toISOString()}&endDateTime=${to.toISOString()}&$select=subject,start,end,location,isAllDay&$orderby=start/dateTime&$top=100`);
+      const EXCLU = ["absent","cp ","copie base","commence à","inter apprieu divers","install visio pablo","pot cyril","support","application itin","potde","congé","férié"];
+      (cal.value||[]).forEach(ev => {
+        if (ev.isAllDay) return;
+        const sujet = ev.subject||"";
+        if (EXCLU.some(k => sujet.toLowerCase().includes(k))) return;
+        const s = new Date(ev.start.dateTime + (ev.start.dateTime.endsWith("Z")?"":"Z"));
+        const e = new Date(ev.end.dateTime + (ev.end.dateTime.endsWith("Z")?"":"Z"));
+        const dur = Math.round((e-s)/36000)/100;
+        if (dur < 0.25) return;
+        const lieu = ev.location?.displayName||"";
+        reunions.push({ date: s, jour: jouriSemaine(s), heure: fmtTime(ev.start.dateTime), sujet, lieu: formatLieu(lieu), duree: dur, cat: categoriseReunion(sujet) });
+      });
+    } catch(e) { console.warn("Calendar error:", e); }
+  }
+
+  // ── 3. CALCULS ──
+  const totalTerminees = terminees.length + felix_done.length;
+  const totalHeures = terminees.reduce((a,b)=>a+b.temps,0) + felix_done.reduce((a,b)=>a+b.temps,0);
+  const enCoursCount = enCours.length;
+  const enCoursdemarre = enCours.filter(t => t.temps > 0).length;
+  const enCoursNonDemarre = enCoursCount - enCoursdemarre;
+  const totalReunionsH = reunions.reduce((a,b)=>a+b.duree,0);
+
+  // Par source
+  const parSource = {};
+  terminees.forEach(t => {
+    const src = t.liste.includes("Journal") ? "Journal SI" : "Tâches ToDo";
+    if (!parSource[src]) parSource[src] = {count:0, temps:0};
+    parSource[src].count++; parSource[src].temps += t.temps;
+  });
+  if (felix_done.length) {
+    parSource["Planner (Félix)"] = { count: felix_done.length, temps: felix_done.reduce((a,b)=>a+b.temps,0) };
+  }
+
+  showNotif("📊 Génération Excel…");
+
+  // ── 4. EXCEL ──
+  await new Promise((res,rej) => {
+    if (window.XLSX) return res();
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+
+  const wb = XLSX.utils.book_new();
+  const today = new Date().toLocaleDateString("fr-FR");
+
+  // ════ ONGLET 1 : SYNTHÈSE TÂCHES ════
+  if (opts.taches) {
+    const rows = [];
+    rows.push([`REPORTING D'ACTIVITÉ DES DEMANDES (tâches) — ${moisStr.toUpperCase()} ${year}`]);
+    rows.push(["Eric Baiamonte  |  Responsable SI  |  Chapel Hydraulique SAS"]);
+    rows.push([`Généré le ${today}  |  Point mensuel avec Félix Bataille`]);
+    rows.push([]);
+    rows.push(["📊  CHIFFRES CLÉS DU MOIS"]);
+    rows.push([]);
+    rows.push(["Tâches terminées", "Heures tracées", "🔄 En cours (démarrées)", "Non démarrées", "Tâches en cours", "Nb jours travaillés"]);
+    rows.push([totalTerminees, `${totalHeures.toFixed(1)}h`, enCoursdemarre, enCoursNonDemarre, enCoursCount, workdays]);
+    rows.push([]);
+    rows.push(["📋  RÉPARTITION DES TÂCHES TERMINÉES PAR SOURCE"]);
+    rows.push([]);
+    rows.push(["Source", "Tâches terminées", "Temps (h)", "Moy. / tâche (h)", "% du volume"]);
+    Object.entries(parSource).forEach(([src, d]) => {
+      rows.push([src, d.count, +d.temps.toFixed(2), +(d.temps/d.count).toFixed(2), +(d.count/totalTerminees).toFixed(2)]);
+    });
+    rows.push(["TOTAL", totalTerminees, +totalHeures.toFixed(2), "", 1]);
+    rows.push([]);
+    rows.push(["📊 RÉPARTITION DES TÂCHES EN COURS"]);
+    rows.push([]);
+    rows.push(["Source", "Tâches démarrées", "Tâches non démarrées", "TOTAL"]);
+    rows.push(["Tâches ToDo", enCoursdemarre, enCoursNonDemarre, enCoursCount]);
+    rows.push(["Planner (Félix)", felix_encours.filter(t=>t.statut.includes("cours")).length, felix_encours.filter(t=>t.statut.includes("Non")).length, felix_encours.length]);
+    rows.push(["TOTAL", enCoursdemarre + felix_encours.filter(t=>t.statut.includes("cours")).length, enCoursNonDemarre + felix_encours.filter(t=>t.statut.includes("Non")).length, enCoursCount + felix_encours.length]);
+    rows.push([]);
+    rows.push([`⏳  TÂCHES FÉLIX — EN COURS (${felix_encours.length})`]);
+    rows.push([]);
+    rows.push(["Tâche", "Échéance", "Priorité", "Statut"]);
+    felix_encours.forEach(t => {
+      rows.push([t.titre, t.due ? fmtDate(t.due) : "—", t.importance === "high" ? "⭐ Haute" : "Normale", t.statut]);
+    });
+
+    const ws1 = XLSX.utils.aoa_to_sheet(rows);
+    ws1["!cols"] = [{wch:40},{wch:16},{wch:16},{wch:16},{wch:16},{wch:16}];
+    XLSX.utils.book_append_sheet(wb, ws1, `Synthèse demandes tâches`);
+  }
+
+  // ════ ONGLET 2 : RÉUNIONS ════
+  if (opts.reunions && reunions.length) {
+    // Synthèse par catégorie
+    const parCat = {};
+    const parLieu = {};
+    reunions.forEach(r => {
+      if (!parCat[r.cat]) parCat[r.cat] = {h:0, n:0};
+      parCat[r.cat].h += r.duree; parCat[r.cat].n++;
+      const lieuKey = r.lieu.includes("Teams") ? "Teams" : r.lieu.includes("Salle") ? "Salle" : r.lieu.includes("Bureau") ? "Bureau" : "Autre";
+      if (!parLieu[lieuKey]) parLieu[lieuKey] = {h:0, n:0};
+      parLieu[lieuKey].h += r.duree; parLieu[lieuKey].n++;
+    });
+
+    const rows2 = [];
+    rows2.push([`ACTIVITES / RÉUNIONS — ${moisStr.toUpperCase()} ${year} — ${workdays} jours travaillés`]);
+    rows2.push([`Eric Baiamonte  |  ${totalReunionsH.toFixed(2)}h au total`]);
+    rows2.push([]);
+    // Headers
+    rows2.push(["Date","Jour","Heure","Réunion","Lieu / Format","Durée (h)","Catégorie","","","Synthèse par Lieu / Format"]);
+    rows2.push(["","","","","","","","","","Lieu / Format","Durée (h)","Nb réunions"]);
+
+    const lieuKeys = Object.keys(parLieu);
+    reunions.forEach((r, idx) => {
+      const lieuKey = lieuKeys[idx] || "";
+      const ldata   = lieuKey ? parLieu[lieuKey] : null;
+      rows2.push([
+        fmtDate(r.date), r.jour, r.heure, r.sujet, r.lieu,
+        r.duree, r.cat, "", "",
+        lieuKey||"", ldata ? +ldata.h.toFixed(2) : "", ldata ? ldata.n : ""
+      ]);
+    });
+    rows2.push([`TOTAL — ${reunions.length} réunions`,"","","","",+totalReunionsH.toFixed(2)]);
+    rows2.push([]);
+    rows2.push(["","","","","","","","","","Synthèse par Catégorie"]);
+    rows2.push(["","","","","","","","","","Catégorie","Durée (h)","Nb réunions"]);
+    Object.entries(parCat).forEach(([cat, d]) => {
+      rows2.push(["","","","","","","","","",cat,+d.h.toFixed(2),d.n]);
+    });
+    rows2.push(["","","","","","","","","","TOTAL",+totalReunionsH.toFixed(2),reunions.length]);
+
+    const ws2 = XLSX.utils.aoa_to_sheet(rows2);
+    ws2["!cols"] = [{wch:12},{wch:6},{wch:8},{wch:52},{wch:30},{wch:10},{wch:28},{wch:2},{wch:2},{wch:24},{wch:12},{wch:12}];
+    XLSX.utils.book_append_sheet(wb, ws2, "Réunions et recettage Diva");
+  }
+
+  // ════ ONGLET 3 : DÉTAIL TERMINÉES ════
+  if (opts.detail) {
+    const rows3 = [];
+    rows3.push([`DÉTAIL DES TÂCHES TERMINÉES — ${moisStr.toUpperCase()} ${year}`,"","","","","","","👤  TÂCHES ASSIGNÉES PAR FÉLIX — TERMINÉES EN MAI"]);
+    rows3.push([]);
+    rows3.push(["","Source","Titre","Réalisée le","Temps (h)","","","Tâche","Date réalisation","Temps (h)","Statut"]);
+
+    const maxRows = Math.max(terminees.length, felix_done.length);
+    for (let i = 0; i < maxRows; i++) {
+      const t  = terminees[i];
+      const f  = felix_done[i];
+      rows3.push([
+        "", t ? t.liste : "", t ? t.titre : "", t ? fmtDate(t.date) : "", t ? (t.temps||"") : "",
+        "", "",
+        f ? f.titre : "", f ? fmtDate(f.date) : "", f ? (f.temps||"") : "", f ? "✅ Terminée" : ""
+      ]);
+    }
+
+    const ws3 = XLSX.utils.aoa_to_sheet(rows3);
+    ws3["!cols"] = [{wch:2},{wch:16},{wch:48},{wch:14},{wch:10},{wch:2},{wch:2},{wch:48},{wch:14},{wch:10},{wch:12}];
+    XLSX.utils.book_append_sheet(wb, ws3, "Détail terminées");
+  }
+
+  const fileName = `Reporting_${moisStr}_${year}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+  showNotif(`✅ ${fileName} téléchargé !`);
 }
 
 // ════════════════════════════════════════════════════════════════
