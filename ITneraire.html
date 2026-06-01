@@ -3302,8 +3302,7 @@ async function createJournalToDo(entry) {
       entry.avec ? `Avec : ${entry.avec}` : null,
       `[MonITinéraire] Temps saisi : ${entry.temps}h`,
       entry.note ? `Note : ${entry.note}` : null,
-    ].filter(Boolean).join("
-");
+    ].filter(Boolean).join("\n");
 
     // Crée la tâche directement en terminée
     await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks`, {
