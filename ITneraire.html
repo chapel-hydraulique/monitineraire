@@ -626,7 +626,38 @@
   }
 
   /* ── EMAILS ── */
-  .emails-card { grid-area: emails; }
+  .emails-card { grid-area: emails; display: none; }
+  .historique-card { grid-area: emails; }
+
+  /* Historique du jour */
+  .histo-entry {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--border);
+    font-size: 12px; transition: all 0.2s;
+  }
+  .histo-entry.journal  { border-left-color: #7c5cf7; }
+  .histo-entry.todo     { border-left-color: var(--accent); }
+  .histo-entry.assigned { border-left-color: var(--accent2); }
+  .histo-entry.done     { opacity: 0.5; }
+  .histo-entry.done .histo-title { text-decoration: line-through; color: var(--text3); }
+  .histo-entry-icon { font-size: 14px; flex-shrink: 0; padding-top: 1px; }
+  .histo-body { flex: 1; min-width: 0; }
+  .histo-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .histo-meta { font-size: 10px; color: #9aa0bc; font-family: var(--font-mono); margin-top: 2px; }
+  .histo-temps {
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+    color: var(--success); flex-shrink: 0;
+  }
+  .histo-total {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 10px;
+    background: var(--surface3); border-radius: var(--radius-sm);
+    font-size: 11px; font-family: var(--font-mono);
+    color: var(--text2); margin-bottom: 8px;
+  }
 
   .email-list { display: flex; flex-direction: column; gap: 6px; }
 
@@ -1583,14 +1614,17 @@
       </div>
     </div>
 
-    <!-- ── EMAILS FLAGGÉS ── -->
-    <div class="card emails-card">
+    <!-- ── HISTORIQUE DU JOUR ── -->
+    <div class="card historique-card">
       <div class="card-header">
-        <div class="card-title">🚩 Emails flaggés</div>
-        <button class="sync-btn" onclick="loadFlaggedEmails()" style="padding:4px 8px; font-size:11px;">↻</button>
+        <div class="card-title">📋 Historique du jour</div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <span id="histo-total-badge" class="card-badge" style="background:#34c97e20;color:var(--success);border:1px solid #34c97e30;">0h</span>
+          <button class="sync-btn" onclick="refreshHistorique()" style="padding:4px 8px;font-size:11px;">↻</button>
+        </div>
       </div>
-      <div id="emails-content">
-        <div class="loading-row"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div><span>Chargement…</span></div>
+      <div id="historique-content">
+        <div class="empty-state" style="padding:16px;">Aucune activité pour l'instant</div>
       </div>
     </div>
 
@@ -2050,6 +2084,9 @@ function showApp(account) {
   loadSavedState();
   updateTopDate();
   setInterval(updateTopDate, 60000);
+
+  // Historique du jour
+  refreshHistorique();
 
   // Restauration OneDrive (prioritaire sur localStorage)
   loadFromOneDrive().then(restored => {
@@ -2931,6 +2968,7 @@ async function completeTodoItem(btn, taskId, listId) {
 
     if (r.ok) {
       showNotif("✅ Tâche terminée dans To Do !");
+      markHistoDone(taskId);
       // Disparaît après 2s
       setTimeout(() => {
         item.style.transition = "all 0.4s";
@@ -3307,7 +3345,7 @@ async function loadAssigned() {
 }
 
 async function loadAllData() {
-  await Promise.allSettled([loadCalendar(), loadFlaggedEmails(), loadToDo(), loadAssigned()]);
+  await Promise.allSettled([loadCalendar(), loadToDo(), loadAssigned()]);
   setTimeout(refreshMatrixBadges, 800);
 }
 
@@ -3532,7 +3570,19 @@ async function saveJournalEntry() {
   // 2. Créer tâche terminée dans To Do (liste "Journal SI")
   await createJournalToDo(entry);
 
-  // 3. Reset + feedback
+  // 3. Ajoute dans l'historique du jour
+  const now2 = new Date();
+  addHistoEntry({
+    id: entry.id,
+    source: "journal",
+    titre: `${journalSelectedType} — ${sujet}`,
+    sous_titre: avec || null,
+    temps,
+    heure: now2.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
+    done: false,
+  });
+
+  // 4. Reset + feedback
   showNotif(`✅ ${journalSelectedType} enregistré — ${temps}h`);
   refreshJournalHistory();
   document.getElementById("journal-sujet").value = "";
@@ -3662,6 +3712,25 @@ function saveTaskHours(taskId, hours) {
 
     // 3. Sauvegarde OneDrive (debounce 3s)
     scheduleSaveToOneDrive();
+
+    // 4. Ajoute/met à jour dans l'historique du jour
+    if (hours !== "" && hours !== null && parseFloat(hours) > 0) {
+      // Cherche le titre de la tâche dans le DOM
+      const todoEl = document.querySelector(`.todo-item[data-id="${taskId}"]`);
+      const assignedEl = document.querySelector(`.assigned-item[data-id="${taskId}"]`);
+      const titre = todoEl?.dataset?.text || assignedEl?.dataset?.text || taskId;
+      const source = assignedEl ? "assigned" : "todo";
+      const now = new Date();
+      addHistoEntry({
+        id: taskId,
+        taskId,
+        source,
+        titre,
+        temps: parseFloat(hours),
+        heure: now.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
+        done: false,
+      });
+    }
 
   } catch(e) {}
 }
@@ -4648,6 +4717,79 @@ async function generateMonthlyReport(month, year, opts) {
   const fileName = `Reporting_${moisStr}_${year}.xlsx`;
   XLSX.writeFile(wb, fileName);
   showNotif(`✅ ${fileName} téléchargé !`);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  HISTORIQUE DU JOUR
+// ════════════════════════════════════════════════════════════════
+
+// Structure : { id, type, titre, sous_titre, temps, heure, done, source }
+// source: "journal" | "todo" | "assigned"
+
+function getHistoriqueKey() {
+  return "mit_histo_" + new Date().toISOString().slice(0,10);
+}
+
+function getHistorique() {
+  try { return JSON.parse(localStorage.getItem(getHistoriqueKey()) || "[]"); } catch(e) { return []; }
+}
+
+function saveHistorique(entries) {
+  try { localStorage.setItem(getHistoriqueKey(), JSON.stringify(entries)); } catch(e) {}
+}
+
+function addHistoEntry(entry) {
+  const entries = getHistorique();
+  // Mise à jour si même ID
+  const idx = entries.findIndex(e => e.id === entry.id);
+  if (idx >= 0) entries[idx] = { ...entries[idx], ...entry };
+  else entries.unshift(entry);
+  saveHistorique(entries);
+  refreshHistorique();
+}
+
+function markHistoDone(taskId) {
+  const entries = getHistorique();
+  const idx = entries.findIndex(e => e.id === taskId || e.taskId === taskId);
+  if (idx >= 0) { entries[idx].done = true; saveHistorique(entries); refreshHistorique(); }
+}
+
+function refreshHistorique() {
+  const entries = getHistorique();
+  const container = document.getElementById("historique-content");
+  const badge = document.getElementById("histo-total-badge");
+  if (!container) return;
+
+  if (!entries.length) {
+    container.innerHTML = `<div class="empty-state" style="padding:16px;font-size:12px;">Aucune activité pour l'instant</div>`;
+    if (badge) badge.textContent = "0h";
+    return;
+  }
+
+  const totalH = entries.reduce((a,b) => a + (parseFloat(b.temps)||0), 0);
+  if (badge) badge.textContent = totalH.toFixed(2) + "h";
+
+  const icons = { journal: "⚡", todo: "✅", assigned: "👤" };
+  const colors = { journal: "#7c5cf7", todo: "var(--accent)", assigned: "var(--accent2)" };
+
+  container.innerHTML =
+    `<div class="histo-total">
+      <span>${entries.length} action${entries.length>1?"s":""} aujourd'hui</span>
+      <span style="color:var(--success);font-weight:600;">${totalH.toFixed(2)}h tracées</span>
+    </div>` +
+    `<div style="display:flex;flex-direction:column;gap:6px;">` +
+    entries.map(e => {
+      const icon = icons[e.source] || "📋";
+      const temps = parseFloat(e.temps)||0;
+      return `<div class="histo-entry ${e.source||''} ${e.done?'done':''}">
+        <span class="histo-entry-icon">${icon}</span>
+        <div class="histo-body">
+          <div class="histo-title">${escHtml(e.titre||"")}</div>
+          <div class="histo-meta">${e.heure||""}${e.sous_titre ? " · " + escHtml(e.sous_titre) : ""}${e.done ? " · ✅ Terminée" : ""}</div>
+        </div>
+        ${temps > 0 ? `<span class="histo-temps">${temps}h</span>` : ""}
+      </div>`;
+    }).join("") + `</div>`;
 }
 
 // ════════════════════════════════════════════════════════════════
