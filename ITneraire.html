@@ -1879,7 +1879,7 @@
         </div>
         <div class="journal-field" style="flex:1;">
           <div class="journal-label">Temps passé (h) *</div>
-          <input class="journal-input" id="journal-temps" type="number" min="0.25" max="24" step="0.25" placeholder="0.5" onkeydown="if(event.key==='Enter') saveJournalEntry()">
+          <input class="journal-input" id="journal-temps" type="number" min="0.25" max="24" step="0.08" placeholder="0.5" onkeydown="if(event.key==='Enter') saveJournalEntry()">
         </div>
       </div>
 
@@ -2368,7 +2368,7 @@ function initImperatifs() {
       <span class="imperatif-num">A${i+1}</span>
       <input class="imperatif-input" id="imp-input-${i}" placeholder="Impératif #${i+1} du jour… (ou glisse une tâche)" oninput="saveImperatifs()">
       <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;" title="Estimation (heures)">
-        <input type="number" id="imp-hours-${i}" min="0" max="24" step="0.25"
+        <input type="number" id="imp-hours-${i}" min="0" max="24" step="0.08"
           placeholder="0" value=""
           style="width:52px;background:var(--surface3);border:1px solid var(--border);border-radius:4px;color:var(--warn);font-family:var(--font-mono);font-size:11px;padding:2px 4px;text-align:center;outline:none;"
           onclick="event.stopPropagation()"
@@ -2818,7 +2818,7 @@ async function loadToDo() {
           ${isImportant ? '<span class="todo-importance-star" title="Important">⭐</span>' : ''}
           <span class="todo-item-text" title="Cliquer pour voir le détail" style="cursor:pointer;" onclick="event.stopPropagation(); openTaskDetail('${t.id}', '${t.listId}', '${st}')">${escHtml(text)}</span>
           <div class="todo-item-hours${hasHours ? ' has-value' : ''}" title="Temps passé (heures)">
-            <input type="number" min="0" max="999" step="0.25" value="${savedHours}" placeholder="0"
+            <input type="number" min="0" max="999" step="0.08" value="${savedHours}" placeholder="0"
               onclick="event.stopPropagation()"
               onchange="saveTaskHours('${t.id}', this.value); this.closest('.todo-item-hours').classList.toggle('has-value', this.value !== '')">
             <label>h</label>
@@ -3326,7 +3326,7 @@ async function loadAssigned() {
             <div class="assigned-item-title">${escHtml(text)}</div>
             <div class="assigned-item-list">${escHtml(listName)}${due ? ' · 📅 '+due : ''}</div>
             <div class="todo-item-hours has-value" style="margin-top:4px; opacity:1 !important;" title="Temps passé (heures)">
-              <input type="number" min="0" max="999" step="0.25" value="${savedHoursA}" placeholder="0"
+              <input type="number" min="0" max="999" step="0.08" value="${savedHoursA}" placeholder="0"
                 onclick="event.stopPropagation()"
                 onchange="saveTaskHours('${t.id || text}', this.value); this.closest('.todo-item-hours').classList.toggle('has-value', this.value !== '')">
               <label>h</label>
@@ -3708,7 +3708,7 @@ function saveTaskHours(taskId, hours) {
 
     // 2. Sauvegarde dans les notes To Do (debounce 2s)
     clearTimeout(hoursSaveTimer);
-    hoursSaveTimer = setTimeout(() => saveHoursToToDo(taskId, parseFloat(hours) || 0), 2000);
+    hoursSaveTimer = setTimeout(() => saveHoursToToDo(taskId, parseFloat(hours) || 0), 20000);
 
     // 3. Sauvegarde OneDrive (debounce 3s)
     scheduleSaveToOneDrive();
@@ -3906,7 +3906,7 @@ async function loadFromOneDrive() {
 
 function scheduleSaveToOneDrive() {
   clearTimeout(oneDriveSaveTimer);
-  oneDriveSaveTimer = setTimeout(saveToOneDrive, 3000);
+  oneDriveSaveTimer = setTimeout(saveToOneDrive, 20000);
 }
 
 function loadTaskHours(taskId) {
