@@ -4191,7 +4191,16 @@ async function exportTasksToExcel(params = null) {
     // ── Tâches Journal SI ──
     if (params.lists.includes("journal") && params.optJournal) {
       try {
-        const journalListId = localStorage.getItem("mit_journal_list_id");
+        // Cherche l'ID en localStorage, sinon cherche par nom dans la liste
+        let journalListId = localStorage.getItem("mit_journal_list_id");
+        if (!journalListId) {
+          const allListsJ = await graphGet(`/me/todo/lists?$top=50`);
+          const jList = (allListsJ.value||[]).find(l => l.displayName.toLowerCase() === "journal si");
+          if (jList) {
+            journalListId = jList.id;
+            localStorage.setItem("mit_journal_list_id", journalListId);
+          }
+        }
         if (journalListId) {
           const data = await graphGet(`/me/todo/lists/${journalListId}/tasks?$filter=status eq 'completed'&$top=200`);
           (data.value || []).forEach(t => {
@@ -4202,7 +4211,7 @@ async function exportTasksToExcel(params = null) {
               terminees.push({ "Liste": "Journal SI", "Titre": t.title || "", "Importance": "Normale", "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours });
           });
         }
-      } catch(e) {}
+      } catch(e) { console.warn("Journal SI export error:", e); }
     }
 
     // ── Tâches Planner (Affectées à moi par Félix) ──
