@@ -917,6 +917,33 @@
     display: flex; gap: 8px; justify-content: flex-end;
   }
 
+  .task-detail-notes-section {
+    padding: 14px 24px;
+    border-top: 1px solid var(--border);
+  }
+  .task-detail-notes-label {
+    font-size: 10px; font-family: var(--font-mono);
+    color: var(--text3); text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .task-detail-notes-saving {
+    font-size: 10px; color: var(--success); opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .task-detail-notes-saving.show { opacity: 1; }
+  .task-detail-notes-input {
+    width: 100%; min-height: 80px; max-height: 160px;
+    padding: 10px 12px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text);
+    font-family: var(--font-body); font-size: 13px;
+    outline: none; resize: vertical; line-height: 1.5;
+    transition: border-color 0.2s;
+  }
+  .task-detail-notes-input:focus { border-color: var(--accent2); }
+  .task-detail-notes-input::placeholder { color: #9aa0bc; }
+
   .task-detail-loading {
     text-align: center; padding: 40px;
     color: var(--text3); font-size: 13px;
@@ -1921,6 +1948,17 @@
         <div class="loading-row" style="justify-content:center"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>
       </div>
     </div>
+    <!-- Notes / Actions -->
+    <div class="task-detail-notes-section">
+      <div class="task-detail-notes-label">
+        📝 Mes notes &amp; actions
+        <span class="task-detail-notes-saving" id="td-notes-saving">✓ Sauvegardé</span>
+      </div>
+      <textarea class="task-detail-notes-input" id="td-notes-input"
+        placeholder="Ce que j'ai fait, suite à donner, contexte…"
+        oninput="onTaskNotesInput()"></textarea>
+    </div>
+
     <div class="task-detail-footer">
       <button class="btn btn-ghost" onclick="closeTaskDetail()">Fermer</button>
       <button class="btn btn-primary" id="td-complete-btn" onclick="completeTodoFromDetail()">✓ Marquer terminée</button>
@@ -2812,12 +2850,14 @@ async function loadToDo() {
         const isImportant = t.importance === 'high';
         const savedHours = loadTaskHours(t.id);
         const hasHours = savedHours !== "";
+        const hasNotes = !!loadTaskNotes(t.id);
         return `<div class="todo-item${isImportant ? ' important' : ''}" draggable="true"
           data-id="${t.id}" data-list-id="${t.listId}" data-text="${escHtml(text).replace(/"/g,'&quot;')}"
           ondragstart="onTodoDragStart(event, '${st}')">
           <button class="todo-item-check" onclick="completeTodoItem(this, '${t.id}', '${t.listId}')" title="Marquer comme terminée">✓</button>
           ${isImportant ? '<span class="todo-importance-star" title="Important">⭐</span>' : ''}
           <span class="todo-item-text" title="Cliquer pour voir le détail" style="cursor:pointer;" onclick="event.stopPropagation(); openTaskDetail('${t.id}', '${t.listId}', '${st}')">${escHtml(text)}</span>
+          ${hasNotes ? '<span title="A des notes" style="font-size:11px;color:#7c5cf7;flex-shrink:0;">📝</span>' : ''}
           <div class="todo-item-hours${hasHours ? ' has-value' : ''}" title="Temps passé (heures)">
             <input type="number" min="0" max="999" step="0.08" value="${savedHours}" placeholder="0"
               onclick="event.stopPropagation()"
@@ -2993,11 +3033,19 @@ async function completeTodoItem(btn, taskId, listId) {
 // ════════════════════════════════════════════════════════════════
 let currentDetailTask = null;
 
+let taskNotesSaveTimer = null;
+
 async function openTaskDetail(taskId, listId, title) {
   currentDetailTask = { taskId, listId, title };
   document.getElementById("td-title").textContent = title;
   document.getElementById("td-meta").innerHTML = "";
   document.getElementById("td-body").innerHTML = `<div class="task-detail-loading"><div class="loading-row" style="justify-content:center"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div></div>`;
+  // Réinitialise le champ notes
+  const notesInput = document.getElementById("td-notes-input");
+  if (notesInput) {
+    notesInput.value = loadTaskNotes(taskId);
+  }
+  document.getElementById("td-notes-saving").classList.remove("show");
   document.getElementById("task-detail-overlay").classList.add("active");
 
   try {
@@ -3109,8 +3157,71 @@ async function openTaskDetail(taskId, listId, title) {
 }
 
 function closeTaskDetail() {
+  // Sauvegarde les notes avant de fermer
+  if (taskNotesSaveTimer) { clearTimeout(taskNotesSaveTimer); }
+  if (currentDetailTask) {
+    const notes = document.getElementById("td-notes-input")?.value || "";
+    saveTaskNotes(currentDetailTask.taskId, notes);
+    if (notes.trim()) saveTaskNotesToDo(currentDetailTask.taskId, currentDetailTask.listId, notes);
+  }
   document.getElementById("task-detail-overlay").classList.remove("active");
   currentDetailTask = null;
+}
+
+// ── Notes locales ──
+function saveTaskNotes(taskId, notes) {
+  try {
+    const key = "mit_task_notes";
+    const all = JSON.parse(localStorage.getItem(key) || "{}");
+    if (notes.trim()) all[taskId] = notes;
+    else delete all[taskId];
+    localStorage.setItem(key, JSON.stringify(all));
+  } catch(e) {}
+}
+
+function loadTaskNotes(taskId) {
+  try {
+    const all = JSON.parse(localStorage.getItem("mit_task_notes") || "{}");
+    return all[taskId] || "";
+  } catch(e) { return ""; }
+}
+
+// ── Sauvegarde dans les notes To Do ──
+async function saveTaskNotesToDo(taskId, listId, notes) {
+  if (!listId || !taskId) return;
+  try {
+    const token = await acquireToken();
+    if (!token) return;
+    // Récupère le contenu existant pour préserver les heures
+    const task = await graphGet(`/me/todo/lists/${listId}/tasks/${taskId}`);
+    const existingBody = task.body?.content || "";
+    // Sépare la partie heures de la partie notes
+    const hoursMatch = existingBody.match(/\[MonITin.raire\][^\n]*/);
+    const hoursLine = hoursMatch ? hoursMatch[0] : "";
+    // Reconstruit le corps : notes utilisateur + ligne heures
+    const newBody = [notes.trim(), hoursLine].filter(Boolean).join("\n\n");
+    await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ body: { contentType: "text", content: newBody } })
+    });
+  } catch(e) { console.warn("Notes save error:", e); }
+}
+
+// ── Handler saisie notes ──
+function onTaskNotesInput() {
+  if (!currentDetailTask) return;
+  clearTimeout(taskNotesSaveTimer);
+  // Sauvegarde locale immédiate
+  const notes = document.getElementById("td-notes-input").value;
+  saveTaskNotes(currentDetailTask.taskId, notes);
+  // Sauvegarde To Do après 5s
+  taskNotesSaveTimer = setTimeout(async () => {
+    await saveTaskNotesToDo(currentDetailTask.taskId, currentDetailTask.listId, notes);
+    const saving = document.getElementById("td-notes-saving");
+    saving.classList.add("show");
+    setTimeout(() => saving.classList.remove("show"), 2000);
+  }, 5000);
 }
 
 async function completeTodoFromDetail() {
