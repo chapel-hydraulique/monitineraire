@@ -3233,6 +3233,20 @@ async function completeTodoFromDetail() {
 
   try {
     const token = await acquireToken();
+    // Sauvegarde les notes ET les heures AVANT de clôturer
+    const notes = document.getElementById("td-notes-input")?.value || "";
+    const hoursInput = document.querySelector(`.todo-item[data-id="${taskId}"] input[type='number']`);
+    const hours = hoursInput ? parseFloat(hoursInput.value) : null;
+    if (clearTimeout) clearTimeout(taskNotesSaveTimer);
+    // Sauvegarde synchrone notes + heures
+    if (notes.trim()) {
+      saveTaskNotes(taskId, notes);
+      await saveTaskNotesToDo(taskId, listId, notes);
+    }
+    if (hours && hours > 0) {
+      clearTimeout(hoursSaveTimer);
+      await saveHoursToToDo(taskId, hours);
+    }
     await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
       method: "PATCH",
       headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
@@ -4228,9 +4242,33 @@ function extractHoursFromTask(t, hoursMap) {
   if (hoursMap[t.id] !== undefined && hoursMap[t.id] !== "") return hoursMap[t.id];
   // 2. Cherche dans la note de la tâche [MonITinéraire] Temps saisi : Xh
   const body = t.body?.content || "";
-  const match = body.match(/\[MonITin[eé]raire\]\s*Temps saisi\s*:\s*([\d.]+)h/i);
+  const match = body.match(/\[MonITin[\u00e9e]raire\]\s*Temps saisi\s*:\s*([\d.]+)h/i);
   if (match) return parseFloat(match[1]);
   return "";
+}
+
+function extractNotesFromTask(t) {
+  // Récupère les notes utilisateur = corps de la tâche sans la ligne heures
+  // Cherche d'abord dans localStorage
+  const localNotes = loadTaskNotes(t.id);
+  if (localNotes) return localNotes;
+  // Sinon depuis le corps de la tâche To Do
+  const body = t.body?.content || "";
+  if (!body) return "";
+  // Nettoie le HTML si présent
+  let text = body;
+  if (body.includes("<")) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = body;
+    tmp.querySelectorAll("script,style").forEach(el => el.remove());
+    text = (tmp.textContent || tmp.innerText || "").trim();
+  }
+  // Supprime la ligne heures MonITinéraire
+  text = text.replace(/\[MonITin[\u00e9e]raire\]\s*Temps saisi[^\n]*/gi, "").trim();
+  // Supprime les signatures email (après "Cordialement", "De :", etc.)
+  const sigIdx = text.search(/(Cordialement|Bien cordialement|De :|From :|--)/i);
+  if (sigIdx > 0) text = text.slice(0, sigIdx).trim();
+  return text.length > 200 ? text.slice(0, 200) + "…" : text;
 }
 
 async function exportTasksToExcel(params = null) {
@@ -4293,7 +4331,7 @@ async function exportTasksToExcel(params = null) {
             const dateCreation = t.createdDateTime ? new Date(t.createdDateTime) : null;
             const importance = t.importance === 'high' ? 'Haute' : t.importance === 'low' ? 'Basse' : 'Normale';
             if (params.statusInProgress)
-              enCours.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": null, "Temps (h)": hours });
+              enCours.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": null, "Temps (h)": hours, "Notes": extractNotesFromTask(t) });
           });
           nextLink = data['@odata.nextLink']?.replace('https://graph.microsoft.com/v1.0','') || null;
         }
@@ -4308,7 +4346,7 @@ async function exportTasksToExcel(params = null) {
               ? new Date(t.completedDateTime.dateTime || t.completedDateTime) : null;
             const importance = t.importance === 'high' ? 'Haute' : t.importance === 'low' ? 'Basse' : 'Normale';
             if (params.statusDone && inPeriod(dateRealisation || dateCreation))
-              terminees.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours });
+              terminees.push({ "Liste": list.displayName, "Titre": t.title || "", "Importance": importance, "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours, "Notes": extractNotesFromTask(t) });
           });
           nextLink2 = data2['@odata.nextLink']?.replace('https://graph.microsoft.com/v1.0','') || null;
         }
@@ -4335,7 +4373,7 @@ async function exportTasksToExcel(params = null) {
             const dateCreation = t.createdDateTime ? new Date(t.createdDateTime) : null;
             const dateRealisation = t.completedDateTime ? new Date(t.completedDateTime.dateTime || t.completedDateTime) : null;
             if (params.statusDone && inPeriod(dateRealisation || dateCreation))
-              terminees.push({ "Liste": "Journal SI", "Titre": t.title || "", "Importance": "Normale", "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours });
+              terminees.push({ "Liste": "Journal SI", "Titre": t.title || "", "Importance": "Normale", "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours, "Notes": extractNotesFromTask(t) });
           });
         }
       } catch(e) { console.warn("Journal SI export error:", e); }
@@ -4350,7 +4388,7 @@ async function exportTasksToExcel(params = null) {
         const dateCreation = t.createdDateTime ? new Date(t.createdDateTime) : null;
         const dateRealisation = t.completedDateTime ? new Date(t.completedDateTime) : null;
         const due = t.dueDateTime ? " (éch. " + new Date(t.dueDateTime).toLocaleDateString("fr-FR") + ")" : "";
-        const row = { "Liste": "Planner (Félix)", "Titre": (t.title || "") + due, "Importance": importance, "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours };
+        const row = { "Liste": "Planner (Félix)", "Titre": (t.title || "") + due, "Importance": importance, "Date création": dateCreation, "Date réalisation": dateRealisation, "Temps (h)": hours, "Notes": "" };
         if (t.percentComplete === 100 || t.completedDateTime) {
           if (params.statusDone && params.lists.includes("planner") && inPeriod(row["Date réalisation"] || row["Date création"])) terminees.push(row);
         } else {
@@ -4459,7 +4497,7 @@ async function exportTasksToExcel(params = null) {
     // ── Onglet En cours ──
     if (enCours.length) {
       const wsEnCours = XLSX.utils.json_to_sheet(enCours, {cellDates: true});
-      wsEnCours['!cols'] = [{wch:20},{wch:45},{wch:12},{wch:14},{wch:16},{wch:10}];
+      wsEnCours['!cols'] = [{wch:20},{wch:45},{wch:12},{wch:14},{wch:16},{wch:10},{wch:40}];
       // Formate les colonnes date (D=Date création, E=Date réalisation)
       const rangeEC = XLSX.utils.decode_range(wsEnCours['!ref'] || "A1");
       for (let R = 1; R <= rangeEC.e.r; R++) {
@@ -4474,7 +4512,7 @@ async function exportTasksToExcel(params = null) {
     // ── Onglet Terminées ──
     if (terminees.length) {
       const wsTerm = XLSX.utils.json_to_sheet(terminees, {cellDates: true});
-      wsTerm['!cols'] = [{wch:20},{wch:45},{wch:12},{wch:14},{wch:16},{wch:10}];
+      wsTerm['!cols'] = [{wch:20},{wch:45},{wch:12},{wch:14},{wch:16},{wch:10},{wch:40}];
       const rangeTerm = XLSX.utils.decode_range(wsTerm['!ref'] || "A1");
       for (let R = 1; R <= rangeTerm.e.r; R++) {
         ['D','E'].forEach(col => {
@@ -4651,7 +4689,7 @@ async function generateMonthlyReport(month, year, opts) {
             const dateReal = t.completedDateTime ? new Date(t.completedDateTime.dateTime||t.completedDateTime) : null;
             if (!dateReal || dateReal < from || dateReal > to) return;
             const h = extractHoursFromTask(t, hoursMap);
-            terminees.push({ liste: isJournal ? "Journal SI" : list.displayName, titre: t.title||"", date: dateReal, temps: h||0 });
+            terminees.push({ liste: isJournal ? "Journal SI" : list.displayName, titre: t.title||"", date: dateReal, temps: h||0, notes: extractNotesFromTask(t) });
           });
           link = data["@odata.nextLink"]?.replace("https://graph.microsoft.com/v1.0","") || null;
         }
@@ -4828,14 +4866,14 @@ async function generateMonthlyReport(month, year, opts) {
     const rows3 = [];
     rows3.push([`DÉTAIL DES TÂCHES TERMINÉES — ${moisStr.toUpperCase()} ${year}`,"","","","","","","👤  TÂCHES ASSIGNÉES PAR FÉLIX — TERMINÉES EN MAI"]);
     rows3.push([]);
-    rows3.push(["","Source","Titre","Réalisée le","Temps (h)","","","Tâche","Date réalisation","Temps (h)","Statut"]);
+    rows3.push(["","Source","Titre","Réalisée le","Temps (h)","Notes","","","Tâche","Date réalisation","Temps (h)","Statut"]);
 
     const maxRows = Math.max(terminees.length, felix_done.length);
     for (let i = 0; i < maxRows; i++) {
       const t  = terminees[i];
       const f  = felix_done[i];
       rows3.push([
-        "", t ? t.liste : "", t ? t.titre : "", t ? fmtDate(t.date) : "", t ? (t.temps||"") : "",
+        "", t ? t.liste : "", t ? t.titre : "", t ? fmtDate(t.date) : "", t ? (t.temps||"") : "", t ? (t.notes||"") : "",
         "", "",
         f ? f.titre : "", f ? fmtDate(f.date) : "", f ? (f.temps||"") : "", f ? "✅ Terminée" : ""
       ]);
