@@ -3856,11 +3856,27 @@ async function saveHoursToToDo(taskId, hours) {
     const todoItem = document.querySelector(`.todo-item[data-id="${taskId}"]`);
     const listId = todoItem?.dataset?.listId;
     if (listId) {
-      await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ body: { contentType: "text", content: `[MonITinéraire] Temps saisi : ${hours}h` } })
-      });
+      // Récupère le corps existant pour préserver les notes utilisateur
+      try {
+        const existingTask = await graphGet(`/me/todo/lists/${listId}/tasks/${taskId}`);
+        const existingBody = existingTask.body?.content || "";
+        // Supprime l'ancienne ligne heures
+        const withoutHours = existingBody.replace(/\[MonITin.raire\] Temps saisi[^\n]*/g, "").trim();
+        // Reconstruit : notes existantes + nouvelle ligne heures
+        const newBody = [withoutHours, `[MonITin\u00e9raire] Temps saisi : ${hours}h`].filter(Boolean).join("\n\n");
+        await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+          body: JSON.stringify({ body: { contentType: "text", content: newBody } })
+        });
+      } catch(e) {
+        // Fallback simple
+        await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+          body: JSON.stringify({ body: { contentType: "text", content: `[MonITinéraire] Temps saisi : ${hours}h` } })
+        });
+      }
       showNotif(`💾 ${hours}h sauvegardé dans To Do`);
       return;
     }
